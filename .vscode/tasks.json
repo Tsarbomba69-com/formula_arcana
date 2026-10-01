@@ -1,0 +1,84 @@
+{
+    "version": "2.0.0",
+    "options": {
+        "cwd": "${workspaceFolder}"
+    },
+    "tasks": [
+        {
+            "label": "odin: build debug",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "build",
+                "src",
+                "-debug",
+                "-out:bin/debug/game"
+            ],
+            "windows": {
+                "args": [
+                    "build",
+                    "src",
+                    "-debug",
+                    "-out:bin/debug/game.exe"
+                ]
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": {
+                "owner": "odin",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^(.+)\\((\\d+):(\\d+)\\)\\s+(Error|Syntax Error|Warning):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            },
+            "presentation": {
+                "reveal": "silent",
+                "clear": true
+            }
+        },
+        {
+            "label": "odin: run",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "run",
+                "src"
+            ],
+            "problemMatcher": "$odin",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "odin: test",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "test",
+                "src"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": "$odin",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        }
+    ]
+}
