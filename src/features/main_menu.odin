@@ -1,76 +1,155 @@
 package main_menu
 
+import "../core"
 import "../shared"
 import rl "vendor:raylib"
 
-Menu_Action :: enum {
-	None,
-	Play,
-	Options,
-	Quit,
-}
-
-Button :: struct {
-	rect:   shared.Rect, // Uses engine math type instead of rl.Rectangle
-	text:   string,
-	action: Menu_Action,
-}
-
 Menu_State :: struct {
-	buttons: [3]Button,
-	mouse_pos: shared.Vec2, // Cached for hover rendering
+	tree:      shared.UI_Tree, // whole tree is value-typed: lives wherever Menu_State lives
+	mouse_pos: shared.Vec2,
 }
 
-init_menu :: proc(screen_w, screen_h: i32) -> Menu_State {
-	btn_w: f32 = 250
-	btn_h: f32 = 50
-	start_x: f32 = f32(screen_w) / 2 - btn_w / 2
+measure_text :: proc(text: cstring, font_size: i32) -> i32 {
+	return rl.MeasureText(text, font_size)
+}
 
-	return Menu_State {
-		buttons = [3]Button {
-			{rect = {start_x, 220, btn_w, btn_h}, text = "Play Game", action = .Play},
-			{rect = {start_x, 290, btn_w, btn_h}, text = "Options", action = .Options},
-			{rect = {start_x, 360, btn_w, btn_h}, text = "Exit to Desktop", action = .Quit},
+init_menu :: proc(screen_w, screen_h: i32) -> (state: Menu_State) {
+	t := &state.tree
+	button_padding := shared.Insets{10, 20, 10, 20}
+
+	title := shared.ui_add(
+		t,
+		shared.Text {
+			content = "Formula Arcana",
+			font_size = 36,
+			color = {255, 255, 255, 255},
+			is_bold = true,
 		},
-	}
+	)
+
+	play := shared.ui_add(
+		t,
+		shared.Button {
+			label = "Enter Codex",
+			normal_color = {50, 150, 50, 255},
+			hover_color = {70, 180, 70, 255},
+			pressed_color = {30, 100, 30, 255},
+			padding = button_padding,
+			on_click = shared.Navigate_To {
+				target = .Level_Select,
+				payload = shared.Level_Select_Payload{difficulty = .Standard},
+			},
+		},
+	)
+
+	settings := shared.ui_add(
+		t,
+		shared.Button {
+			label = "Settings",
+			normal_color = {100, 100, 100, 255},
+			hover_color = {130, 130, 130, 255},
+			pressed_color = {70, 70, 70, 255},
+			padding = button_padding,
+			on_click = shared.Navigate_To {
+				target = .Settings,
+				payload = shared.Settings_Payload {
+					active_tab = .Audio,
+					pending_audio = {
+						master_volume = 0.8,
+						music_volume = 0.5,
+						sfx_volume = 1.0,
+						is_muted = false,
+					},
+					pending_graphics = {
+						fullscreen = true,
+						resolution = {1920, 1080},
+						vsync = true,
+					},
+					is_dirty = false,
+				},
+			},
+		},
+	)
+
+	// Root (added last)
+	shared.ui_add(
+		t,
+		shared.Container {
+			direction = .Vertical,
+			alignment = .Center,
+			spacing = 16,
+			padding = {20, 20, 20, 20},
+		},
+		title,
+		play,
+		settings,
+	)
+
+	layout_menu(&state, screen_w, screen_h)
+	return
 }
 
-// Pure domain logic: consumes input state passed down from frame update
-update_menu :: proc(state: ^Menu_State, input: shared.Mouse_Input) -> Menu_Action {
-	state.mouse_pos = input.position
+// Call again on window resize.
+layout_menu :: proc(state: ^Menu_State, screen_w, screen_h: i32) {
+	shared.ui_layout(&state.tree, {f32(screen_w), f32(screen_h)}, measure_text)
+}
 
-	if input.clicked {
-		for btn in state.buttons {
-			if shared.contains_point(btn.rect, input.position) {
-				state.mouse_pos = input.position
-				return btn.action
+// Consumes the frame event stream; returns the clicked button's message (nil if none).
+update_menu :: proc(state: ^Menu_State, events: []core.Event) -> shared.Msg {
+	msg: shared.Msg
+
+	for ev in events {
+		#partial switch e in ev {
+		case shared.Mouse_Input:
+			state.mouse_pos = e.position
+
+			for &n in state.tree.nodes[:state.tree.count] {
+				#partial switch &k in n.kind {
+				case shared.Button: if shared.contains_point(n.rect, e.position) {
+							k.state = e.clicked ? .Pressed : .Hover
+							if e.clicked {
+								msg = k.on_click
+							}
+						} else {
+							k.state = .Normal
+						}
+				}
 			}
 		}
 	}
 
-	return .None
+	return msg
 }
 
-draw_menu :: proc(state: ^Menu_State, screen_w: i32) {
-	title_text :: "FORMULA ARCANA"
-	title_w := rl.MeasureText(title_text, 40)
-	rl.DrawText(title_text, screen_w / 2 - title_w / 2, 120, 40, rl.RAYWHITE)
+draw_menu :: proc(state: ^Menu_State) {
+	draw_node(&state.tree, state.tree.root)
+}
 
-	for btn in state.buttons {
-		is_hovered := shared.contains_point(btn.rect, state.mouse_pos)
+draw_node :: proc(t: ^shared.UI_Tree, i: int) {
+	n := &t.nodes[i]
 
-		bg_color := is_hovered ? rl.DARKBLUE : rl.BLUE
-		text_color := is_hovered ? rl.YELLOW : rl.WHITE
+	switch k in n.kind {
+	case nil:
+	case shared.Container: for c in n.children[:n.child_count] {
+				draw_node(t, c)
+			}
+	case shared.Text:
+		rl.DrawText(k.content, i32(n.rect.x), i32(n.rect.y), k.font_size, rl.Color(k.color))
+	case shared.Button:
+		bg: shared.Color
+		switch k.state {
+		case .Normal: bg = k.normal_color
+		case .Hover: bg = k.hover_color
+		case .Pressed: bg = k.pressed_color
+		}
 
-		rl_rect := rl.Rectangle{btn.rect.x, btn.rect.y, btn.rect.w, btn.rect.h}
+		r := rl.Rectangle{n.rect.x, n.rect.y, n.rect.w, n.rect.h}
+		rl.DrawRectangleRec(r, rl.Color(bg))
+		rl.DrawRectangleLinesEx(r, 2, k.state == .Normal ? rl.LIGHTGRAY : rl.GOLD)
 
-		rl.DrawRectangleRec(rl_rect, bg_color)
-		rl.DrawRectangleLinesEx(rl_rect, 2, is_hovered ? rl.GOLD : rl.LIGHTGRAY)
-
-		tw := rl.MeasureText(cstring(raw_data(btn.text)), 20)
-		tx := i32(btn.rect.x + btn.rect.w / 2) - tw / 2
-		ty := i32(btn.rect.y + btn.rect.h / 2) - 10
-
-		rl.DrawText(cstring(raw_data(btn.text)), tx, ty, 20, text_color)
+		tw := rl.MeasureText(k.label, shared.BUTTON_FONT_SIZE)
+		tx := i32(n.rect.x + n.rect.w / 2) - tw / 2
+		ty := i32(n.rect.y + n.rect.h / 2) - shared.BUTTON_FONT_SIZE / 2
+		rl.DrawText(k.label, tx, ty, shared.BUTTON_FONT_SIZE, rl.WHITE)
 	}
 }

@@ -8,7 +8,7 @@ Window :: struct {
 	// ... window properties
 }
 
-poll_input_and_events :: proc(ch: ^core.Event_Channel) {
+poll_events :: proc(ch: ^core.Event_Channel) {
 	if rl.IsWindowResized() {
 		w := rl.GetScreenWidth()
 		h := rl.GetScreenHeight()
@@ -18,8 +18,11 @@ poll_input_and_events :: proc(ch: ^core.Event_Channel) {
 	}
 
 	m_pos := rl.GetMousePosition()
-	 core.publish(ch, shared.Mouse_Input {
-		position = {m_pos.x, m_pos.y},
-		clicked = rl.IsMouseButtonPressed(.LEFT),
-	})
+	core.publish(
+		ch,
+		shared.Mouse_Input {
+			position = {m_pos.x, m_pos.y},
+			clicked = rl.IsMouseButtonPressed(.LEFT),
+		},
+	)
 }

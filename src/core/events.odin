@@ -1,7 +1,7 @@
 package core
 
-import "core:sync"
 import "../shared"
+import "core:sync"
 
 Game_State :: enum {
 	Menu,
