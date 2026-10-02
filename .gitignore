@@ -293,7 +293,7 @@ libLLVM*.so*
 *.wasm
 
 # shared collection
-shared/
+# shared/
 
 # temp files
 * .ll

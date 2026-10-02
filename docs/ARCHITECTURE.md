@@ -112,28 +112,42 @@ src/shared/
 
 ## 4. Package Import Flow & Communication Rules
 
-```plaintext
-               +----------------------------------+
-               |        src/main.odin             |
-               |        src/app.odin              |
-               +----------------+-----------------+
-                                |
-        +-----------------------+-----------------------+
-        |                       |                       |
-        v                       v                       v
-+---------------+       +---------------+       +---------------+
-| features/     |       | core/         |       | platform/     |
-|  ├── combat   |------>|  ├── events   |------>|  ├── window   |
-|  └── inventory|       |  └── state    |       |  └── input    |
-+---------------+       +---------------+       +---------------+
-        |                       |                       |
-        +-----------------------+-----------------------+
-                                |
-                                v
-                        +---------------+
-                        | shared/       |
-                        |  └── math     |
-                        +---------------+
+```mermaid
+graph TD
+    %% Top Entry Level
+    subgraph Root["src/"]
+        MainApp["main.odin<br/>app.odin"]
+    end
+
+    %% Middle Layer Modules
+    subgraph Features["features/"]
+        FeaturesContent["├── combat<br/>└── inventory"]
+    end
+
+    subgraph Core["core/"]
+        CoreContent["├── events<br/>└── state"]
+    end
+
+    subgraph Platform["platform/"]
+        PlatformContent["├── window<br/>└── input"]
+    end
+
+    %% Bottom Shared Level
+    subgraph Shared["shared/"]
+        SharedContent["└── math"]
+    end
+
+    %% Dependencies & Flows
+    MainApp --> Features
+    MainApp --> Core
+    MainApp --> Platform
+
+    Features --> Core
+    Core --> Platform
+
+    Features --> Shared
+    Core --> Shared
+    Platform --> Shared
 ```
 
 ### 4.1 Inter-Feature Decoupling
