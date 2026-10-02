@@ -49,8 +49,7 @@ update :: proc(app: ^Game) {
 	case .Menu:
 		msg := features.update_menu(&app.menu_state, events[:])
 		#partial switch m in msg {
-		case shared.Navigate_To:
-			navigate(app, m)
+		case shared.Navigate_To: navigate(app, m)
 		}
 	case .Playing, .Options: if rl.IsKeyPressed(.ESCAPE) {
 				app.status = .Menu
@@ -62,9 +61,9 @@ navigate :: proc(app: ^Game, nav: shared.Navigate_To) {
 	app.nav_payload = nav.payload
 
 	switch nav.target {
-	case .Main_Menu:    app.status = .Menu
+	case .Main_Menu: app.status = .Menu
 	case .Level_Select: app.status = .Playing // TODO: dedicated level-select state
-	case .Settings:     app.status = .Options
+	case .Settings: app.status = .Options
 	}
 }
 
