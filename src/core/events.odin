@@ -3,25 +3,14 @@ package core
 import "../shared"
 import "core:sync"
 
-Game_State :: enum {
-	Menu,
-	Playing,
-	Options,
-	Quit,
-}
-
 Window_Resized :: struct {
 	width, height: i32,
 }
 
-State_Changed :: struct {
-	target_state: Game_State,
-}
-
 Event :: union {
 	Window_Resized,
-	State_Changed,
 	shared.Mouse_Input,
+	shared.Key_Input,
 }
 
 CAPACITY :: 256

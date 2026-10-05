@@ -4,93 +4,66 @@ import "core"
 import "features"
 import "platform"
 import "shared"
-import rl "vendor:raylib"
+
+WINDOW_W :: 1280
+WINDOW_H :: 720
 
 Game :: struct {
-	event_channel: core.Event_Channel,
-	menu_state:    features.Menu_State,
-	status:        core.Game_State,
-	nav_payload:   shared.Nav_Payload, // data handed over by the last Navigate_To
-	screen_w:      i32,
-	screen_h:      i32,
+	events: core.Event_Channel,
+	screen: features.Screen_State, // the active screen owns its own state
+	ctx:    features.Context, // config, progress, viewport, renderer
 }
 
 init :: proc(app: ^Game, w, h: i32) {
-	app.screen_w = w
-	app.screen_h = h
-	app.status = .Menu
-	app.menu_state = features.init_menu(w, h)
+	app.ctx = {
+		config   = core.default_config(),
+		viewport = shared.viewport_of(w, h),
+		renderer = platform.raylib_renderer(),
+	}
+	app.screen = features.enter(core.Go_Main_Menu{}, app.ctx)
 }
 
 update :: proc(app: ^Game) {
-	// 1. Platform produces events into channel
-	platform.poll_events(&app.event_channel)
+	// 1. Platform produces events
+	platform.poll_events(&app.events)
 
-	// 2. Drain channel into a frame-local event slice
+	// 2. Drain into a frame-local slice
 	events := make([dynamic]core.Event, context.temp_allocator)
-
-	for ev in core.poll(&app.event_channel) {
+	for ev in core.poll(&app.events) {
 		append(&events, ev)
 	}
 
-	// 3. Process top-level system events
+	// 3. App-level events
 	for ev in events {
 		#partial switch e in ev {
 		case core.Window_Resized:
-			app.screen_w = e.width
-			app.screen_h = e.height
-			features.layout_menu(&app.menu_state, e.width, e.height)
-		case core.State_Changed: app.status = e.target_state
+			app.ctx.viewport = shared.viewport_of(e.width, e.height)
+			features.resize_screen(&app.screen, app.ctx)
 		}
 	}
 
-	// 4. Pass the frame event stream to active feature domain logic
-	#partial switch app.status {
-	case .Menu:
-		msg := features.update_menu(&app.menu_state, events[:])
-		#partial switch m in msg {
-		case shared.Navigate_To: navigate(app, m)
-		}
-	case .Playing, .Options: if rl.IsKeyPressed(.ESCAPE) {
-				app.status = .Menu
-			}
-	}
-}
-
-navigate :: proc(app: ^Game, nav: shared.Navigate_To) {
-	app.nav_payload = nav.payload
-
-	switch nav.target {
-	case .Main_Menu: app.status = .Menu
-	case .Level_Select: app.status = .Playing // TODO: dedicated level-select state
-	case .Settings: app.status = .Options
+	// 4. The active screen decides; a Navigation replaces the screen.
+	if nav := features.update_screen(&app.screen, events[:]); nav != nil {
+		app.screen = features.enter(nav, app.ctx)
 	}
 }
 
 draw :: proc(app: ^Game) {
-	rl.BeginDrawing()
-	rl.ClearBackground(rl.Color{24, 28, 36, 255})
-
-	#partial switch app.status {
-	case .Menu: features.draw_menu(&app.menu_state)
-	case .Playing: rl.DrawText("GAMEPLAY SCREEN", 270, 260, 30, rl.GREEN)
-	case .Options: rl.DrawText("OPTIONS SCREEN", 280, 260, 30, rl.ORANGE)
-	case .Quit:
-	}
-
-	rl.EndDrawing()
+	r := app.ctx.renderer
+	r.begin_frame()
+	r.clear({24, 28, 36, 255})
+	features.draw_screen(&app.screen, app.ctx)
+	r.end_frame()
 }
 
 main :: proc() {
-	screen_w: i32 = 800
-	screen_h: i32 = 600
-	rl.InitWindow(screen_w, screen_h, "Formula Arcana")
-	defer rl.CloseWindow()
-	rl.SetTargetFPS(60)
-	app: Game
-	init(&app, screen_w, screen_h)
+	platform.open_window(WINDOW_W, WINDOW_H, "Formula Arcana")
+	defer platform.close_window()
 
-	for !rl.WindowShouldClose() && app.status != .Quit {
+	app: Game
+	init(&app, WINDOW_W, WINDOW_H)
+
+	for !platform.should_close() {
 		free_all(context.temp_allocator)
 		update(&app)
 		draw(&app)

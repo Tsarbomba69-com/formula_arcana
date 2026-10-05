@@ -1,9 +1,13 @@
 package shared
 
-// The whole UI tree lives in a fixed-size array (no heap, no pointers).
-// Children are referenced by index, so a UI_Tree can be copied/returned by value safely.
+// Generic widget tree + layout. Knows NOTHING about screens or game messages:
+// a button just carries an `action` id, and the owning feature decides what it means.
+// The whole tree is value-typed: fixed array, children by index, copy-safe.
+
 UI_MAX_NODES :: 16
 UI_MAX_CHILDREN :: 8
+UI_MAX_LINES :: 4
+LINE_HEIGHT :: 1.3
 BUTTON_FONT_SIZE :: 20
 
 Color :: [4]u8
@@ -23,69 +27,6 @@ Alignment :: enum {
 	End,
 }
 
-Button_State :: enum {
-	Normal,
-	Hover,
-	Pressed,
-}
-
-// ---- Messages (what a click produces) --------------------------------------
-
-Screen :: enum {
-	Main_Menu,
-	Level_Select,
-	Settings,
-}
-
-Difficulty :: enum {
-	Easy,
-	Standard,
-	Hard,
-}
-
-Settings_Tab :: enum {
-	Audio,
-	Graphics,
-}
-
-Audio_Settings :: struct {
-	master_volume, music_volume, sfx_volume: f32,
-	is_muted:                                bool,
-}
-
-Graphics_Settings :: struct {
-	fullscreen: bool,
-	resolution: [2]i32,
-	vsync:      bool,
-}
-
-Level_Select_Payload :: struct {
-	unlocked_levels: []i32, // nil == none unlocked, no allocation
-	selected_level:  Maybe(i32),
-	difficulty:      Difficulty,
-}
-
-Settings_Payload :: struct {
-	active_tab:       Settings_Tab,
-	pending_audio:    Audio_Settings,
-	pending_graphics: Graphics_Settings,
-	is_dirty:         bool,
-}
-
-Nav_Payload :: union {
-	Level_Select_Payload,
-	Settings_Payload,
-}
-
-Navigate_To :: struct {
-	target:  Screen,
-	payload: Nav_Payload,
-}
-
-Msg :: union {
-	Navigate_To,
-}
-
 // ---- Node kinds ------------------------------------------------------------
 
 Container :: struct {
@@ -96,20 +37,25 @@ Container :: struct {
 }
 
 Text :: struct {
-	content:   cstring,
-	font_size: i32,
-	color:     Color,
-	is_bold:   bool,
+	content:    string,
+	font_size:  i32,
+	color:      Color,
+	is_bold:    bool,
+	align:      Alignment, // line alignment inside the node's own box
+	max_width:  f32, // 0 == never wrap
+	// -- layout output (filled by ui_layout; byte ranges into `content`) --
+	line_count: int,
+	lines:      [UI_MAX_LINES][2]int,
 }
 
 Button :: struct {
-	label:         cstring,
-	state:         Button_State,
+	label:         string,
+	action:        int, // opaque id; the owning feature maps it to behaviour
+	width:         f32, // 0 == fit content
 	normal_color:  Color,
 	hover_color:   Color,
 	pressed_color: Color,
 	padding:       Insets,
-	on_click:      Msg,
 }
 
 Node_Kind :: union {
@@ -129,6 +75,29 @@ UI_Tree :: struct {
 	nodes: [UI_MAX_NODES]Node,
 	count: int,
 	root:  int,
+}
+
+// ---- Interaction state lives OUTSIDE the nodes ------------------------------
+// Exactly one focus; at most one hover; at most one pressed.
+
+Interaction :: struct {
+	focus:   int, // node index
+	hover:   Maybe(int),
+	pressed: Maybe(int),
+}
+
+Button_Visual :: enum {
+	Rest,
+	Hover,
+	Pressed,
+	Focused,
+}
+
+button_visual :: proc(ix: Interaction, i: int) -> Button_Visual {
+	if p, ok := ix.pressed.?; ok && p == i { return .Pressed }
+	if h, ok := ix.hover.?; ok && h == i { return .Hover }
+	if ix.focus == i { return .Focused }
+	return .Rest
 }
 
 // ---- Building --------------------------------------------------------------
@@ -155,14 +124,91 @@ ui_add :: proc(t: ^UI_Tree, kind: Node_Kind, children: ..int) -> int {
 	return idx
 }
 
+// ---- Queries ---------------------------------------------------------------
+
+// Button node indices in creation order (== visual order when built top to bottom).
+ui_buttons :: proc(t: ^UI_Tree) -> (list: [UI_MAX_NODES]int, count: int) {
+	for i in 0 ..< t.count {
+		if _, ok := t.nodes[i].kind.(Button); ok {
+			list[count] = i
+			count += 1
+		}
+	}
+	return
+}
+
+ui_first_button :: proc(t: ^UI_Tree) -> int {
+	list, count := ui_buttons(t)
+	return count > 0 ? list[0] : 0
+}
+
+// `p` is in design space.
+ui_button_at :: proc(t: ^UI_Tree, p: Vec2) -> (idx: int, ok: bool) {
+	for i in 0 ..< t.count {
+		if _, is_button := t.nodes[i].kind.(Button);
+		   is_button && contains_point(t.nodes[i].rect, p) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// dir: +1 next, -1 previous. Wraps around.
+ui_focus_step :: proc(t: ^UI_Tree, ix: ^Interaction, dir: int) {
+	list, count := ui_buttons(t)
+	if count == 0 { return }
+	cur := 0
+	for i in 0 ..< count {
+		if list[i] == ix.focus { cur = i }
+	}
+	ix.focus = list[(cur + dir + count) % count]
+}
+
+// ---- Text wrapping ---------------------------------------------------------
+
+@(private)
+text_push_line :: proc(k: ^Text, start, end: int) {
+	assert(k.line_count < UI_MAX_LINES, "UI_MAX_LINES exceeded")
+	k.lines[k.line_count] = {start, end}
+	k.line_count += 1
+}
+
+// Greedy word wrap on spaces. Fills k.lines, returns the widest line.
+text_wrap :: proc(k: ^Text, measure: Measure_Text) -> (width: f32) {
+	k.line_count = 0
+	s := k.content
+
+	if k.max_width <= 0 {
+		text_push_line(k, 0, len(s))
+	} else {
+		start, last_space, i := 0, -1, 0
+		for i <= len(s) {
+			if i == len(s) || s[i] == ' ' {
+				if last_space >= 0 && measure(s[start:i], k.font_size) > k.max_width {
+					text_push_line(k, start, last_space)
+					start = last_space + 1
+					last_space = -1
+					continue // re-test this same space against the new line
+				}
+				last_space = i
+			}
+			i += 1
+		}
+		text_push_line(k, start, len(s))
+	}
+
+	for ln in k.lines[:k.line_count] {
+		width = max(width, measure(k.content[ln[0]:ln[1]], k.font_size))
+	}
+	return
+}
+
 // ---- Layout ----------------------------------------------------------------
 
-Measure_Text :: #type proc(text: cstring, font_size: i32) -> i32
-
-// Centers the root on the screen.
-ui_layout :: proc(t: ^UI_Tree, screen: Vec2, measure: Measure_Text) {
+// `design` is the available area in design units. Centers the root in it.
+ui_layout :: proc(t: ^UI_Tree, design: Vec2, measure: Measure_Text) {
 	size := ui_measure(t, t.root, measure)
-	ui_place(t, t.root, {(screen.x - size.x) / 2, (screen.y - size.y) / 2})
+	ui_place(t, t.root, {(design.x - size.x) / 2, (design.y - size.y) / 2})
 }
 
 // Pass 1 (bottom-up): compute each node's size.
@@ -170,14 +216,15 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: Measure_Text) -> Vec2 {
 	n := &t.nodes[i]
 	size: Vec2
 
-	switch k in n.kind {
+	switch &k in n.kind {
 	case nil:
-	case Text: size = {f32(measure(k.content, k.font_size)), f32(k.font_size)}
+	case Text:
+		w := text_wrap(&k, measure)
+		size = {w, f32(k.line_count) * f32(k.font_size) * LINE_HEIGHT}
 	case Button:
-		size = {
-				f32(measure(k.label, BUTTON_FONT_SIZE)) + k.padding.left + k.padding.right,
-				f32(BUTTON_FONT_SIZE) + k.padding.top + k.padding.bottom,
-			}
+		w := measure(k.label, BUTTON_FONT_SIZE) + k.padding.left + k.padding.right
+		if k.width > 0 { w = k.width }
+		size = {w, f32(BUTTON_FONT_SIZE) + k.padding.top + k.padding.bottom}
 	case Container:
 		main_axis, cross_axis: f32
 		for c in n.children[:n.child_count] {

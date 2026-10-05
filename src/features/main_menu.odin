@@ -1,74 +1,112 @@
-package main_menu
+package features
 
 import "../core"
 import "../shared"
-import rl "vendor:raylib"
+
+// The menu owns what its buttons MEAN. The generic Button only carries an int.
+Menu_Action :: enum int {
+	Enter_Codex,
+	Archives,
+	Settings,
+}
 
 Menu_State :: struct {
-	tree:      shared.UI_Tree, // whole tree is value-typed: lives wherever Menu_State lives
-	mouse_pos: shared.Vec2,
+	tree:     shared.UI_Tree,
+	viewport: shared.Viewport,
+	ix:       shared.Interaction, // focus / hover / pressed, one place
 }
 
-measure_text :: proc(text: cstring, font_size: i32) -> i32 {
-	return rl.MeasureText(text, font_size)
+BUTTON_WIDTH :: 360
+
+WHITE :: shared.Color{255, 255, 255, 255}
+CYAN :: shared.Color{77, 216, 232, 255}
+MINT :: shared.Color{74, 222, 154, 255}
+MIST :: shared.Color{140, 160, 170, 255}
+
+add_button :: proc(
+	t: ^shared.UI_Tree,
+	label: string,
+	action: Menu_Action,
+	normal, hover, pressed: shared.Color,
+) -> int {
+	return shared.ui_add(
+		t,
+		shared.Button {
+			label = label,
+			action = int(action),
+			width = BUTTON_WIDTH,
+			normal_color = normal,
+			hover_color = hover,
+			pressed_color = pressed,
+			padding = {14, 20, 14, 20},
+		},
+	)
 }
 
-init_menu :: proc(screen_w, screen_h: i32) -> (state: Menu_State) {
+init_menu :: proc(ctx: Context) -> (state: Menu_State) {
+	state.viewport = ctx.viewport
 	t := &state.tree
-	button_padding := shared.Insets{10, 20, 10, 20}
 
-	title := shared.ui_add(
+	eyebrow := shared.ui_add(
+		t,
+		shared.Text{content = "THE LOGIC ALCHEMIST", font_size = 12, color = MINT},
+	)
+	top := shared.ui_add(
+		t,
+		shared.Text{content = "FORMULA", font_size = 64, color = WHITE, is_bold = true},
+	)
+	bottom := shared.ui_add(
+		t,
+		shared.Text{content = "ARCANA", font_size = 48, color = CYAN, is_bold = true},
+	)
+	wordmark := shared.ui_add(
+		t,
+		shared.Container{direction = .Vertical, alignment = .Center, spacing = 4},
+		top,
+		bottom,
+	)
+
+	tagline := shared.ui_add(
 		t,
 		shared.Text {
-			content = "Formula Arcana",
-			font_size = 36,
-			color = {255, 255, 255, 255},
-			is_bold = true,
+			content = "Transmute logic into power. Restore the celestial codex one equation at a time.",
+			font_size = 16,
+			color = MIST,
+			align = .Center,
+			max_width = BUTTON_WIDTH,
 		},
 	)
 
-	play := shared.ui_add(
+	enter := add_button(
 		t,
-		shared.Button {
-			label = "Enter Codex",
-			normal_color = {50, 150, 50, 255},
-			hover_color = {70, 180, 70, 255},
-			pressed_color = {30, 100, 30, 255},
-			padding = button_padding,
-			on_click = shared.Navigate_To {
-				target = .Level_Select,
-				payload = shared.Level_Select_Payload{difficulty = .Standard},
-			},
-		},
+		"Enter the Codex",
+		.Enter_Codex,
+		{22, 70, 78, 255},
+		{30, 95, 105, 255},
+		{14, 50, 56, 255},
 	)
-
-	settings := shared.ui_add(
+	archives := add_button(
 		t,
-		shared.Button {
-			label = "Settings",
-			normal_color = {100, 100, 100, 255},
-			hover_color = {130, 130, 130, 255},
-			pressed_color = {70, 70, 70, 255},
-			padding = button_padding,
-			on_click = shared.Navigate_To {
-				target = .Settings,
-				payload = shared.Settings_Payload {
-					active_tab = .Audio,
-					pending_audio = {
-						master_volume = 0.8,
-						music_volume = 0.5,
-						sfx_volume = 1.0,
-						is_muted = false,
-					},
-					pending_graphics = {
-						fullscreen = true,
-						resolution = {1920, 1080},
-						vsync = true,
-					},
-					is_dirty = false,
-				},
-			},
-		},
+		"Archives",
+		.Archives,
+		{28, 38, 44, 255},
+		{40, 54, 62, 255},
+		{20, 28, 32, 255},
+	)
+	settings := add_button(
+		t,
+		"Settings",
+		.Settings,
+		{28, 38, 44, 255},
+		{40, 54, 62, 255},
+		{20, 28, 32, 255},
+	)
+	buttons := shared.ui_add(
+		t,
+		shared.Container{direction = .Vertical, alignment = .Center, spacing = 16},
+		enter,
+		archives,
+		settings,
 	)
 
 	// Root (added last)
@@ -77,79 +115,84 @@ init_menu :: proc(screen_w, screen_h: i32) -> (state: Menu_State) {
 		shared.Container {
 			direction = .Vertical,
 			alignment = .Center,
-			spacing = 16,
+			spacing = 24,
 			padding = {20, 20, 20, 20},
 		},
-		title,
-		play,
-		settings,
+		eyebrow,
+		wordmark,
+		tagline,
+		buttons,
 	)
 
-	layout_menu(&state, screen_w, screen_h)
+	state.ix.focus = shared.ui_first_button(t)
+	layout_menu(&state, ctx)
 	return
 }
 
 // Call again on window resize.
-layout_menu :: proc(state: ^Menu_State, screen_w, screen_h: i32) {
-	shared.ui_layout(&state.tree, {f32(screen_w), f32(screen_h)}, measure_text)
+layout_menu :: proc(state: ^Menu_State, ctx: Context) {
+	state.viewport = ctx.viewport
+	design := ctx.viewport.size / ctx.viewport.scale
+	shared.ui_layout(&state.tree, design, ctx.renderer.measure_text)
 }
 
-// Consumes the frame event stream; returns the clicked button's message (nil if none).
-update_menu :: proc(state: ^Menu_State, events: []core.Event) -> shared.Msg {
-	msg: shared.Msg
+// Consumes the frame's events; returns where to go next (nil == stay).
+update_menu :: proc(state: ^Menu_State, events: []core.Event) -> core.Navigation {
+	nav: core.Navigation
+	t := &state.tree
 
 	for ev in events {
 		#partial switch e in ev {
 		case shared.Mouse_Input:
-			state.mouse_pos = e.position
+			p := e.position / state.viewport.scale // real px -> design space
+			hit, over := shared.ui_button_at(t, p)
 
-			for &n in state.tree.nodes[:state.tree.count] {
-				#partial switch &k in n.kind {
-				case shared.Button: if shared.contains_point(n.rect, e.position) {
-							k.state = e.clicked ? .Pressed : .Hover
-							if e.clicked {
-								msg = k.on_click
-							}
-						} else {
-							k.state = .Normal
-						}
+			if over {
+				state.ix.hover = hit
+			} else {
+				state.ix.hover = nil
+			}
+
+			if e.pressed && over {
+				state.ix.pressed = hit
+				state.ix.focus = hit
+			}
+
+			// Click == press AND release on the same button.
+			if e.released {
+				if pr, ok := state.ix.pressed.?; ok {
+					if over && hit == pr {
+						nav = menu_navigate(t, pr)
+					}
+					state.ix.pressed = nil
 				}
 			}
+
+		case shared.Key_Input: switch e.key {
+				case .Up: shared.ui_focus_step(t, &state.ix, -1)
+				case .Down: shared.ui_focus_step(t, &state.ix, +1)
+				case .Confirm: nav = menu_navigate(t, state.ix.focus)
+				case .Back:
+				}
 		}
 	}
 
-	return msg
+	return nav
 }
 
-draw_menu :: proc(state: ^Menu_State) {
-	draw_node(&state.tree, state.tree.root)
-}
+// The ONLY place that knows what each button means.
+menu_navigate :: proc(t: ^shared.UI_Tree, node: int) -> core.Navigation {
+	button, ok := t.nodes[node].kind.(shared.Button)
+	if !ok { return nil }
 
-draw_node :: proc(t: ^shared.UI_Tree, i: int) {
-	n := &t.nodes[i]
-
-	switch k in n.kind {
-	case nil:
-	case shared.Container: for c in n.children[:n.child_count] {
-				draw_node(t, c)
-			}
-	case shared.Text:
-		rl.DrawText(k.content, i32(n.rect.x), i32(n.rect.y), k.font_size, rl.Color(k.color))
-	case shared.Button:
-		bg: shared.Color
-		switch k.state {
-		case .Normal: bg = k.normal_color
-		case .Hover: bg = k.hover_color
-		case .Pressed: bg = k.pressed_color
-		}
-
-		r := rl.Rectangle{n.rect.x, n.rect.y, n.rect.w, n.rect.h}
-		rl.DrawRectangleRec(r, rl.Color(bg))
-		rl.DrawRectangleLinesEx(r, 2, k.state == .Normal ? rl.LIGHTGRAY : rl.GOLD)
-
-		tw := rl.MeasureText(k.label, shared.BUTTON_FONT_SIZE)
-		tx := i32(n.rect.x + n.rect.w / 2) - tw / 2
-		ty := i32(n.rect.y + n.rect.h / 2) - shared.BUTTON_FONT_SIZE / 2
-		rl.DrawText(k.label, tx, ty, shared.BUTTON_FONT_SIZE, rl.WHITE)
+	switch Menu_Action(button.action) {
+	case .Enter_Codex: return core.Go_Level_Select{difficulty = .Standard}
+	case .Archives: return core.Go_Archives{}
+	case .Settings: return core.Go_Settings{tab = .Audio}
 	}
+	return nil
+}
+
+draw_menu :: proc(state: ^Menu_State, r: shared.Renderer) {
+	shared.ui_draw(&state.tree, state.ix, r, state.viewport.scale)
 }
