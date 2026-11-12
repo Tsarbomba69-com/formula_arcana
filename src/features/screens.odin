@@ -1,6 +1,7 @@
 package features
 
 import "../core"
+import "../platform"
 import "../shared"
 
 // Everything a screen needs from the app, passed in (never reached for).
@@ -9,6 +10,7 @@ Context :: struct {
 	progress: core.Progress,
 	viewport: shared.Viewport,
 	renderer: shared.Renderer,
+	tex_mgr:  platform.Texture_Manager,
 }
 
 // ---- One state type per screen (stubs, to be grown) ------------------------
@@ -39,7 +41,7 @@ Screen_State :: union {
 
 // ---- Transitions -----------------------------------------------------------
 
-enter :: proc(nav: core.Navigation, ctx: Context) -> Screen_State {
+enter :: proc(nav: core.Navigation, ctx: ^Context) -> Screen_State {
 	switch n in nav {
 	case core.Go_Main_Menu: return init_menu(ctx)
 	case core.Go_Level_Select:
@@ -67,7 +69,7 @@ update_screen :: proc(s: ^Screen_State, events: []core.Event) -> core.Navigation
 	return nil
 }
 
-resize_screen :: proc(s: ^Screen_State, ctx: Context) {
+resize_screen :: proc(s: ^Screen_State, ctx: ^Context) {
 	#partial switch &v in s^ {
 	case Menu_State: layout_menu(&v, ctx)
 	}

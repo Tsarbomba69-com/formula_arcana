@@ -1,6 +1,7 @@
 package main
 
 import "core"
+import "core:log"
 import "features"
 import "platform"
 import "shared"
@@ -15,12 +16,14 @@ Game :: struct {
 }
 
 init :: proc(app: ^Game, w, h: i32) {
+	tm := &app.ctx.tex_mgr
 	app.ctx = {
 		config   = core.default_config(),
 		viewport = shared.viewport_of(w, h),
-		renderer = platform.raylib_renderer(),
+		renderer = platform.raylib_renderer(tm),
+		tex_mgr  = platform.init_texture_manager(),
 	}
-	app.screen = features.enter(core.Go_Main_Menu{}, app.ctx)
+	app.screen = features.enter(core.Go_Main_Menu{}, &app.ctx)
 }
 
 update :: proc(app: ^Game) {
@@ -38,13 +41,13 @@ update :: proc(app: ^Game) {
 		#partial switch e in ev {
 		case core.Window_Resized:
 			app.ctx.viewport = shared.viewport_of(e.width, e.height)
-			features.resize_screen(&app.screen, app.ctx)
+			features.resize_screen(&app.screen, &app.ctx)
 		}
 	}
 
 	// 4. The active screen decides; a Navigation replaces the screen.
 	if nav := features.update_screen(&app.screen, events[:]); nav != nil {
-		app.screen = features.enter(nav, app.ctx)
+		app.screen = features.enter(nav, &app.ctx)
 	}
 }
 
@@ -57,6 +60,8 @@ draw :: proc(app: ^Game) {
 }
 
 main :: proc() {
+	context.logger = log.create_console_logger()
+	defer log.destroy_console_logger(context.logger)
 	platform.open_window(WINDOW_W, WINDOW_H, "Formula Arcana")
 	defer platform.close_window()
 

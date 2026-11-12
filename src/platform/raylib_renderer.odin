@@ -1,11 +1,16 @@
 package platform
 
 import "../shared"
+import "core:log"
 import "core:strings"
 import rl "vendor:raylib"
 
+@(private)
+g_active_tex_mgr: ^Texture_Manager
+
 // The ONLY file (with window.odin) that talks to raylib for drawing.
-raylib_renderer :: proc() -> shared.Renderer {
+raylib_renderer :: proc(tex_mgr: ^Texture_Manager) -> shared.Renderer {
+	g_active_tex_mgr = tex_mgr
 	return {
 		begin_frame = proc() { rl.BeginDrawing() },
 		end_frame = proc() { rl.EndDrawing() },
@@ -23,6 +28,16 @@ raylib_renderer :: proc() -> shared.Renderer {
 		},
 		outline_rect = proc(r: shared.Rect, thickness: f32, c: shared.Color) {
 			rl.DrawRectangleLinesEx({r.x, r.y, r.w, r.h}, thickness, rl.Color(c))
+		},
+		draw_texture = proc(id: shared.Texture_Id, dest: shared.Rect, tint: shared.Color) {
+			raylib_tex, ok := get_texture(g_active_tex_mgr, id)
+			if !ok {
+				log.errorf("Failed to fetch texture from manager with % ID", id)
+				return
+			}
+			source := rl.Rectangle{0, 0, f32(raylib_tex.width), f32(raylib_tex.height)}
+			target := rl.Rectangle{dest.x, dest.y, dest.w, dest.h}
+			rl.DrawTexturePro(raylib_tex, source, target, {0, 0}, 0.0, rl.Color(tint))
 		},
 	}
 }

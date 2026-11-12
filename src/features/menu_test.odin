@@ -21,7 +21,8 @@ button_center :: proc(m: ^Menu_State, which: int) -> shared.Vec2 {
 
 @(test)
 buttons_share_width_and_center :: proc(t: ^testing.T) {
-	m := init_menu(test_ctx())
+	ctx := test_ctx()
+	m := init_menu(&ctx)
 	list, count := shared.ui_buttons(&m.tree)
 	testing.expect_value(t, count, 3)
 
@@ -35,7 +36,8 @@ buttons_share_width_and_center :: proc(t: ^testing.T) {
 
 @(test)
 tagline_wraps_to_two_lines :: proc(t: ^testing.T) {
-	m := init_menu(test_ctx())
+	ctx := test_ctx()
+	m := init_menu(&ctx)
 	for i in 0 ..< m.tree.count {
 		if txt, ok := m.tree.nodes[i].kind.(shared.Text); ok && txt.max_width > 0 {
 			testing.expect_value(t, txt.line_count, 2)
@@ -45,7 +47,8 @@ tagline_wraps_to_two_lines :: proc(t: ^testing.T) {
 
 @(test)
 click_fires_on_release_not_press :: proc(t: ^testing.T) {
-	m := init_menu(test_ctx())
+	ctx := test_ctx()
+	m := init_menu(&ctx)
 	pos := button_center(&m, 0) // scale == 1 at 1440x900
 
 	nav := update_menu(&m, {shared.Mouse_Input{position = pos, pressed = true}})
@@ -58,7 +61,8 @@ click_fires_on_release_not_press :: proc(t: ^testing.T) {
 
 @(test)
 release_elsewhere_cancels :: proc(t: ^testing.T) {
-	m := init_menu(test_ctx())
+	ctx := test_ctx()
+	m := init_menu(&ctx)
 	update_menu(&m, {shared.Mouse_Input{position = button_center(&m, 0), pressed = true}})
 	nav := update_menu(&m, {shared.Mouse_Input{position = button_center(&m, 1), released = true}})
 	testing.expect(t, nav == nil)
@@ -67,7 +71,8 @@ release_elsewhere_cancels :: proc(t: ^testing.T) {
 
 @(test)
 keyboard_focus_and_confirm :: proc(t: ^testing.T) {
-	m := init_menu(test_ctx())
+	ctx := test_ctx()
+	m := init_menu(&ctx)
 	update_menu(&m, {shared.Key_Input{.Down}})
 	nav := update_menu(&m, {shared.Key_Input{.Confirm}})
 	_, is_archives := nav.(core.Go_Archives)
@@ -76,12 +81,48 @@ keyboard_focus_and_confirm :: proc(t: ^testing.T) {
 
 @(test)
 mouse_uses_scale :: proc(t: ^testing.T) {
+	// Arrange
 	ctx := test_ctx()
 	ctx.viewport = shared.viewport_of(720, 450) // scale 0.5
-	m := init_menu(ctx)
+	m := init_menu(&ctx)
 	real_pos := button_center(&m, 2) * ctx.viewport.scale
+	// Act
 	update_menu(&m, {shared.Mouse_Input{position = real_pos, pressed = true}})
 	nav := update_menu(&m, {shared.Mouse_Input{position = real_pos, released = true}})
 	_, is_settings := nav.(core.Go_Settings)
+	// Assert
 	testing.expect(t, is_settings)
+}
+
+@(test)
+background_defaults_to_none :: proc(t: ^testing.T) {
+	// Arrange
+	ctx := test_ctx()
+	m := init_menu(&ctx)
+
+	// Act & Assert
+	for i in 0 ..< m.tree.count {
+		node := m.tree.nodes[i]
+		testing.expect_value(t, node.background.type, shared.UI_Background_Type.None)
+	}
+}
+
+@(test)
+widget_accepts_background_image :: proc(t: ^testing.T) {
+	// Arrange
+	ctx := test_ctx()
+	m := init_menu(&ctx)
+	list, count := shared.ui_buttons(&m.tree)
+	testing.expect(t, count > 0, "expected at least one button")
+
+	btn_idx := list[0]
+	test_texture := shared.Texture_Id(101)
+
+	// Act
+	shared.set_node_background_image(&m.tree, btn_idx, test_texture)
+
+	// Assert
+	node := m.tree.nodes[btn_idx]
+	testing.expect_value(t, node.background.type, shared.UI_Background_Type.Image)
+	testing.expect_value(t, node.background.texture_id, test_texture)
 }

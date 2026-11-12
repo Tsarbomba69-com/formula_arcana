@@ -1,7 +1,9 @@
 package features
 
 import "../core"
+import "../platform"
 import "../shared"
+import "core:log"
 
 // The menu owns what its buttons MEAN. The generic Button only carries an int.
 Menu_Action :: enum int {
@@ -43,9 +45,11 @@ add_button :: proc(
 	)
 }
 
-init_menu :: proc(ctx: Context) -> (state: Menu_State) {
+init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 	state.viewport = ctx.viewport
 	t := &state.tree
+	background_path: cstring = "assets/ui/main_menu_bg.png"
+	background, ok := platform.load_texture_from_file(&ctx^.tex_mgr, background_path)
 
 	eyebrow := shared.ui_add(
 		t,
@@ -110,13 +114,16 @@ init_menu :: proc(ctx: Context) -> (state: Menu_State) {
 	)
 
 	// Root (added last)
+	design := ctx.viewport.size / ctx.viewport.scale
 	shared.ui_add(
 		t,
 		shared.Container {
 			direction = .Vertical,
 			alignment = .Center,
-			spacing = 24,
-			padding = {20, 20, 20, 20},
+			spacing   = 24,
+			padding   = {20, 20, 20, 20},
+			width     = design.x, // Fill screen width
+			height    = design.y, // Fill screen height
 		},
 		eyebrow,
 		wordmark,
@@ -125,12 +132,19 @@ init_menu :: proc(ctx: Context) -> (state: Menu_State) {
 	)
 
 	state.ix.focus = shared.ui_first_button(t)
+
+	if !ok {
+		log.warnf("Failed to load button background texture at %s", background_path)
+	} else {
+		shared.set_node_background_image(t, t.root, background)
+	}
+
 	layout_menu(&state, ctx)
 	return
 }
 
 // Call again on window resize.
-layout_menu :: proc(state: ^Menu_State, ctx: Context) {
+layout_menu :: proc(state: ^Menu_State, ctx: ^Context) {
 	state.viewport = ctx.viewport
 	design := ctx.viewport.size / ctx.viewport.scale
 	shared.ui_layout(&state.tree, design, ctx.renderer.measure_text)

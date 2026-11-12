@@ -13,4 +13,5 @@ Renderer :: struct {
 	draw_text:    proc(text: string, pos: Vec2, font_size: i32, color: Color),
 	fill_rect:    proc(r: Rect, color: Color),
 	outline_rect: proc(r: Rect, thickness: f32, color: Color),
+	draw_texture: proc(id: Texture_Id, dest: Rect, tint: Color),
 }

@@ -34,6 +34,8 @@ Container :: struct {
 	alignment: Alignment, // cross-axis alignment of children
 	spacing:   f32,
 	padding:   Insets,
+	width:     f32, // 0 == fit content
+	height:    f32, // 0 == fit content
 }
 
 Text :: struct {
@@ -58,6 +60,18 @@ Button :: struct {
 	padding:       Insets,
 }
 
+UI_Background_Type :: enum {
+	None,
+	Color,
+	Image,
+}
+
+UI_Background :: struct {
+	type:       UI_Background_Type,
+	color:      Color,
+	texture_id: Texture_Id,
+}
+
 Node_Kind :: union {
 	Container,
 	Text,
@@ -69,6 +83,7 @@ Node :: struct {
 	rect:        Rect, // filled by ui_layout
 	children:    [UI_MAX_CHILDREN]int,
 	child_count: int,
+	background:  UI_Background,
 }
 
 UI_Tree :: struct {
@@ -207,8 +222,9 @@ text_wrap :: proc(k: ^Text, measure: Measure_Text) -> (width: f32) {
 
 // `design` is the available area in design units. Centers the root in it.
 ui_layout :: proc(t: ^UI_Tree, design: Vec2, measure: Measure_Text) {
-	size := ui_measure(t, t.root, measure)
-	ui_place(t, t.root, {(design.x - size.x) / 2, (design.y - size.y) / 2})
+	ui_measure(t, t.root, measure)
+	t.nodes[t.root].rect = Rect{0, 0, design.x, design.y}
+	ui_place(t, t.root, {0, 0})
 }
 
 // Pass 1 (bottom-up): compute each node's size.
@@ -243,13 +259,15 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: Measure_Text) -> Vec2 {
 		size = k.direction == .Vertical ? Vec2{cross_axis, main_axis} : Vec2{main_axis, cross_axis}
 		size.x += k.padding.left + k.padding.right
 		size.y += k.padding.top + k.padding.bottom
+		if k.width > 0 { size.x = k.width }
+		if k.height > 0 { size.y = k.height }
 	}
 
 	n.rect.w, n.rect.h = size.x, size.y
 	return size
 }
 
-// Pass 2 (top-down): assign absolute positions.
+// Pass 2 (top-down): assign absolute positions and center content along both axes.
 ui_place :: proc(t: ^UI_Tree, i: int, origin: Vec2) {
 	n := &t.nodes[i]
 	n.rect.x, n.rect.y = origin.x, origin.y
@@ -259,8 +277,35 @@ ui_place :: proc(t: ^UI_Tree, i: int, origin: Vec2) {
 
 	inner_w := n.rect.w - c.padding.left - c.padding.right
 	inner_h := n.rect.h - c.padding.top - c.padding.bottom
-	cursor := Vec2{origin.x + c.padding.left, origin.y + c.padding.top}
+
+	cursor_x := origin.x + c.padding.left
+	cursor_y := origin.y + c.padding.top
 	vertical := c.direction == .Vertical
+
+	// Automatically center content along the main axis if container has extra space
+	if vertical {
+		total_content_h: f32 = 0
+		for ci, idx in n.children[:n.child_count] {
+			child := &t.nodes[ci]
+			total_content_h += child.rect.h
+			if idx > 0 { total_content_h += c.spacing }
+		}
+		if inner_h > total_content_h {
+			cursor_y += (inner_h - total_content_h) / 2
+		}
+	} else {
+		total_content_w: f32 = 0
+		for ci, idx in n.children[:n.child_count] {
+			child := &t.nodes[ci]
+			total_content_w += child.rect.w
+			if idx > 0 { total_content_w += c.spacing }
+		}
+		if inner_w > total_content_w {
+			cursor_x += (inner_w - total_content_w) / 2
+		}
+	}
+
+	cursor := Vec2{cursor_x, cursor_y}
 
 	for ci in n.children[:n.child_count] {
 		child := &t.nodes[ci]
@@ -282,4 +327,10 @@ ui_place :: proc(t: ^UI_Tree, i: int, origin: Vec2) {
 			cursor.x += child.rect.w + c.spacing
 		}
 	}
+}
+
+set_node_background_image :: proc(t: ^UI_Tree, i: int, texture_id: Texture_Id) {
+	n := &t.nodes[i]
+	n.background.type = .Image
+	n.background.texture_id = texture_id
 }

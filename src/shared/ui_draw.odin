@@ -1,5 +1,6 @@
 package shared
 
+import "core:fmt"
 // Generic drawing: tree + interaction + renderer -> draw calls.
 // No raylib here, so this is as testable as the layout.
 
@@ -11,6 +12,11 @@ ui_draw :: proc(t: ^UI_Tree, ix: Interaction, r: Renderer, scale: f32) {
 ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: Renderer, scale: f32) {
 	n := &t.nodes[i]
 	rect := Rect{n.rect.x * scale, n.rect.y * scale, n.rect.w * scale, n.rect.h * scale}
+	#partial switch n.background.type {
+	case .Color: panic("Background not implemented for 'Color' type")
+	case .Image: // Draw background texture scaled to the node's rect
+			r.draw_texture(n.background.texture_id, rect, {255, 255, 255, 255})
+	}
 
 	switch &k in n.kind {
 	case nil:
@@ -51,5 +57,70 @@ ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: Renderer, scale: f
 			size,
 			{255, 255, 255, 255},
 		)
+	}
+}
+
+// Dumps the entire UI tree hierarchy to the console for debugging
+ui_dump :: proc(t: ^UI_Tree) {
+	if t.count == 0 {
+		fmt.println("--- UI Tree: Empty ---")
+		return
+	}
+	fmt.println("--- UI Tree Dump ---")
+	ui_dump_node(t, t.root, 0)
+}
+
+@(private)
+ui_dump_node :: proc(t: ^UI_Tree, i: int, depth: int) {
+	if i < 0 || i >= t.count { return }
+	n := &t.nodes[i]
+
+	// Build visual indentation
+	indent := ""
+	for _ in 0 ..< depth {
+		indent = fmt.tprint(indent, "  ")
+	}
+
+	// Extract kind-specific details
+	kind_str := "Unknown"
+	details := ""
+	switch &k in n.kind {
+	case nil: kind_str = "Nil"
+	case Container:
+		kind_str = "Container"
+		details = fmt.tprint("dir=", k.direction, ", spacing=", k.spacing)
+	case Text:
+		kind_str = "Text"
+		details = fmt.tprint("content=\"", k.content, "\"")
+	case Button:
+		kind_str = "Button"
+		details = fmt.tprint("label=\"", k.label, "\", action=", k.action)
+	}
+
+	// Format background info
+	bg_str := ""
+	switch n.background.type {
+	case .None: bg_str = "bg:none"
+	case .Color: bg_str = fmt.tprint("bg:color=", n.background.color)
+	case .Image: bg_str = fmt.tprint("bg:image(id=", n.background.texture_id, ")")
+	}
+
+	// Print node summary line
+	fmt.printf(
+		"%s[%d] %s | rect: {x=%.1f, y=%.1f, w=%.1f, h=%.1f} | %s | %s\n",
+		indent,
+		i,
+		kind_str,
+		n.rect.x,
+		n.rect.y,
+		n.rect.w,
+		n.rect.h,
+		details,
+		bg_str,
+	)
+
+	// Recurse into children
+	for child_idx in n.children[:n.child_count] {
+		ui_dump_node(t, child_idx, depth + 1)
 	}
 }

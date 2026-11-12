@@ -302,7 +302,7 @@ libLLVM*.so*
 
 *.sublime-workspace
 examples/bug/
-build.sh
+# build.sh
 !core/debug/
 
 # RAD debugger project file

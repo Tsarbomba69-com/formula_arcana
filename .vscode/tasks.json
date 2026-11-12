@@ -7,52 +7,58 @@
         {
             "label": "odin: build debug",
             "type": "shell",
-            "command": "odin",
+            "command": "./build.sh",
             "args": [
                 "build",
-                "src",
-                "-debug",
-                "-out:bin/debug/game"
+                "debug"
             ],
-            "windows": {
-                "args": [
-                    "build",
-                    "src",
-                    "-debug",
-                    "-out:bin/debug/game.exe"
-                ]
-            },
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": {
-                "owner": "odin",
-                "fileLocation": [
-                    "relative",
-                    "${workspaceFolder}"
-                ],
-                "pattern": {
-                    "regexp": "^(.+)\\((\\d+):(\\d+)\\)\\s+(Error|Syntax Error|Warning):\\s+(.*)$",
-                    "file": 1,
-                    "line": 2,
-                    "column": 3,
-                    "severity": 4,
-                    "message": 5
-                }
-            },
+            "problemMatcher": "$odin",
             "presentation": {
                 "reveal": "silent",
                 "clear": true
             }
         },
         {
-            "label": "odin: run",
+            "label": "odin: build release",
             "type": "shell",
-            "command": "odin",
+            "command": "./build.sh",
+            "args": [
+                "build",
+                "release"
+            ],
+            "group": "build",
+            "problemMatcher": "$odin",
+            "presentation": {
+                "reveal": "silent",
+                "clear": true
+            }
+        },
+        {
+            "label": "odin: run debug",
+            "type": "shell",
+            "command": "./build.sh",
             "args": [
                 "run",
-                "src"
+                "debug"
+            ],
+            "problemMatcher": "$odin",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "odin: run release",
+            "type": "shell",
+            "command": "./build.sh",
+            "args": [
+                "run",
+                "release"
             ],
             "problemMatcher": "$odin",
             "presentation": {
@@ -64,10 +70,9 @@
         {
             "label": "odin: test",
             "type": "shell",
-            "command": "odin",
+            "command": "./build.sh",
             "args": [
-                "test",
-                "src"
+                "test"
             ],
             "group": {
                 "kind": "test",
@@ -77,6 +82,30 @@
             "presentation": {
                 "reveal": "always",
                 "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "odin: format",
+            "type": "shell",
+            "command": "./build.sh",
+            "args": [
+                "format"
+            ],
+            "presentation": {
+                "reveal": "silent",
+                "clear": true
+            }
+        },
+        {
+            "label": "odin: clean",
+            "type": "shell",
+            "command": "./build.sh",
+            "args": [
+                "clean"
+            ],
+            "presentation": {
+                "reveal": "silent",
                 "clear": true
             }
         }
