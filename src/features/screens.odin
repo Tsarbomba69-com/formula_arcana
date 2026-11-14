@@ -1,7 +1,6 @@
 package features
 
 import "../core"
-import "../platform"
 import "../shared"
 
 // Everything a screen needs from the app, passed in (never reached for).
@@ -10,8 +9,8 @@ Context :: struct {
 	progress: core.Progress,
 	viewport: shared.Viewport,
 	renderer: shared.Renderer,
-	tex_mgr:  platform.Texture_Manager,
-	font_mgr: platform.Font_Manager,
+	load_texture: proc(cstring) -> (shared.Texture_Id, bool),
+	load_font:    proc(cstring, i32) -> (shared.Font_Id, bool),
 }
 
 // ---- One state type per screen (stubs, to be grown) ------------------------

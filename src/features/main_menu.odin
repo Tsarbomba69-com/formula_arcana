@@ -1,7 +1,6 @@
 package features
 
 import "../core"
-import "../platform"
 import "../shared"
 import "core:log"
 
@@ -51,17 +50,27 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 	state.viewport = ctx.viewport
 	t := &state.tree
 	background_path: cstring = "assets/images/main_menu_bg.png"
-	background, ok := platform.load_texture_from_file(&ctx^.tex_mgr, background_path)
+	background: shared.Texture_Id
+	ok := false
+	has_texture_loader := ctx.load_texture != nil
+	if has_texture_loader {
+		background, ok = ctx.load_texture(background_path)
+	}
 	// Load at 64px base size so the 64px title and smaller UI elements both render cleanly
 	ui_font_path: cstring = "assets/fonts/ChakraPetch-SemiBold.ttf"
-	ui_font, ok_font := platform.load_font_from_file(&ctx.font_mgr, ui_font_path, 64)
-	if !ok_font {
+	ui_font: shared.Font_Id
+	ok_font := false
+	has_font_loader := ctx.load_font != nil
+	if has_font_loader {
+		ui_font, ok_font = ctx.load_font(ui_font_path, 64)
+	}
+	if has_font_loader && !ok_font {
 		log.warnf("Failed to load UI font at %s, falling back to default", ui_font_path)
 	}
 
 	eyebrow := core.ui_add(
 		t,
-		core.Text{content = "THE LOGIC ALCHEMIST", font_size = 20, color = MINT, font = ui_font},
+		core.Text{content = "THE LOGIC ALCHEMIST", font_size = 24, color = MINT, font = ui_font},
 	)
 	top := core.ui_add(
 		t,
@@ -145,10 +154,12 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 
 	state.ix.focus = core.ui_first_button(t)
 
-	if !ok {
-		log.warnf("Failed to load button background texture at %s", background_path)
-	} else {
-		core.set_node_background_image(t, t.root, background)
+	if has_texture_loader {
+		if !ok {
+			log.warnf("Failed to load button background texture at %s", background_path)
+		} else {
+			core.set_node_background_image(t, t.root, background)
+		}
 	}
 
 	layout_menu(&state, ctx)
