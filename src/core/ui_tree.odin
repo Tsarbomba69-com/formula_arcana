@@ -1,16 +1,15 @@
-package shared
+package core
 
+import "../shared"
 // Generic widget tree + layout. Knows NOTHING about screens or game messages:
 // a button just carries an `action` id, and the owning feature decides what it means.
 // The whole tree is value-typed: fixed array, children by index, copy-safe.
-
+// TODO: This should be in core
 UI_MAX_NODES :: 16
 UI_MAX_CHILDREN :: 8
 UI_MAX_LINES :: 4
 LINE_HEIGHT :: 1.3
 BUTTON_FONT_SIZE :: 20
-
-Color :: [4]u8
 
 Insets :: struct {
 	top, right, bottom, left: f32,
@@ -41,8 +40,9 @@ Container :: struct {
 Text :: struct {
 	content:    string,
 	font_size:  i32,
-	color:      Color,
+	color:      shared.Color,
 	is_bold:    bool,
+	font:       shared.Font_Id,
 	align:      Alignment, // line alignment inside the node's own box
 	max_width:  f32, // 0 == never wrap
 	// -- layout output (filled by ui_layout; byte ranges into `content`) --
@@ -54,9 +54,10 @@ Button :: struct {
 	label:         string,
 	action:        int, // opaque id; the owning feature maps it to behaviour
 	width:         f32, // 0 == fit content
-	normal_color:  Color,
-	hover_color:   Color,
-	pressed_color: Color,
+	font:          shared.Font_Id,
+	normal_color:  shared.Color,
+	hover_color:   shared.Color,
+	pressed_color: shared.Color,
 	padding:       Insets,
 }
 
@@ -68,8 +69,8 @@ UI_Background_Type :: enum {
 
 UI_Background :: struct {
 	type:       UI_Background_Type,
-	color:      Color,
-	texture_id: Texture_Id,
+	color:      shared.Color,
+	texture_id: shared.Texture_Id,
 }
 
 Node_Kind :: union {
@@ -80,7 +81,7 @@ Node_Kind :: union {
 
 Node :: struct {
 	kind:        Node_Kind,
-	rect:        Rect, // filled by ui_layout
+	rect:        shared.Rect, // filled by ui_layout
 	children:    [UI_MAX_CHILDREN]int,
 	child_count: int,
 	background:  UI_Background,
@@ -106,6 +107,13 @@ Button_Visual :: enum {
 	Hover,
 	Pressed,
 	Focused,
+}
+
+Font :: struct {
+	path:      string,
+	is_loaded: bool,
+	base_size: i32,
+	// raw_font: rl.Font,
 }
 
 button_visual :: proc(ix: Interaction, i: int) -> Button_Visual {
@@ -158,10 +166,10 @@ ui_first_button :: proc(t: ^UI_Tree) -> int {
 }
 
 // `p` is in design space.
-ui_button_at :: proc(t: ^UI_Tree, p: Vec2) -> (idx: int, ok: bool) {
+ui_button_at :: proc(t: ^UI_Tree, p: shared.Vec2) -> (idx: int, ok: bool) {
 	for i in 0 ..< t.count {
 		if _, is_button := t.nodes[i].kind.(Button);
-		   is_button && contains_point(t.nodes[i].rect, p) {
+		   is_button && shared.contains_point(t.nodes[i].rect, p) {
 			return i, true
 		}
 	}
@@ -189,7 +197,7 @@ text_push_line :: proc(k: ^Text, start, end: int) {
 }
 
 // Greedy word wrap on spaces. Fills k.lines, returns the widest line.
-text_wrap :: proc(k: ^Text, measure: Measure_Text) -> (width: f32) {
+text_wrap :: proc(k: ^Text, measure: shared.Measure_Text) -> (width: f32) {
 	k.line_count = 0
 	s := k.content
 
@@ -199,7 +207,7 @@ text_wrap :: proc(k: ^Text, measure: Measure_Text) -> (width: f32) {
 		start, last_space, i := 0, -1, 0
 		for i <= len(s) {
 			if i == len(s) || s[i] == ' ' {
-				if last_space >= 0 && measure(s[start:i], k.font_size) > k.max_width {
+				if last_space >= 0 && measure(s[start:i], k.font_size, k.font) > k.max_width {
 					text_push_line(k, start, last_space)
 					start = last_space + 1
 					last_space = -1
@@ -213,7 +221,7 @@ text_wrap :: proc(k: ^Text, measure: Measure_Text) -> (width: f32) {
 	}
 
 	for ln in k.lines[:k.line_count] {
-		width = max(width, measure(k.content[ln[0]:ln[1]], k.font_size))
+		width = max(width, measure(k.content[ln[0]:ln[1]], k.font_size, k.font))
 	}
 	return
 }
@@ -221,16 +229,16 @@ text_wrap :: proc(k: ^Text, measure: Measure_Text) -> (width: f32) {
 // ---- Layout ----------------------------------------------------------------
 
 // `design` is the available area in design units. Centers the root in it.
-ui_layout :: proc(t: ^UI_Tree, design: Vec2, measure: Measure_Text) {
+ui_layout :: proc(t: ^UI_Tree, design: shared.Vec2, measure: shared.Measure_Text) {
 	ui_measure(t, t.root, measure)
-	t.nodes[t.root].rect = Rect{0, 0, design.x, design.y}
+	t.nodes[t.root].rect = shared.Rect{0, 0, design.x, design.y}
 	ui_place(t, t.root, {0, 0})
 }
 
 // Pass 1 (bottom-up): compute each node's size.
-ui_measure :: proc(t: ^UI_Tree, i: int, measure: Measure_Text) -> Vec2 {
+ui_measure :: proc(t: ^UI_Tree, i: int, measure: shared.Measure_Text) -> shared.Vec2 {
 	n := &t.nodes[i]
-	size: Vec2
+	size: shared.Vec2
 
 	switch &k in n.kind {
 	case nil:
@@ -238,7 +246,7 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: Measure_Text) -> Vec2 {
 		w := text_wrap(&k, measure)
 		size = {w, f32(k.line_count) * f32(k.font_size) * LINE_HEIGHT}
 	case Button:
-		w := measure(k.label, BUTTON_FONT_SIZE) + k.padding.left + k.padding.right
+		w := measure(k.label, BUTTON_FONT_SIZE, k.font) + k.padding.left + k.padding.right
 		if k.width > 0 { w = k.width }
 		size = {w, f32(BUTTON_FONT_SIZE) + k.padding.top + k.padding.bottom}
 	case Container:
@@ -256,7 +264,8 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: Measure_Text) -> Vec2 {
 		if n.child_count > 1 {
 			main_axis += k.spacing * f32(n.child_count - 1)
 		}
-		size = k.direction == .Vertical ? Vec2{cross_axis, main_axis} : Vec2{main_axis, cross_axis}
+		size =
+			k.direction == .Vertical ? shared.Vec2{cross_axis, main_axis} : shared.Vec2{main_axis, cross_axis}
 		size.x += k.padding.left + k.padding.right
 		size.y += k.padding.top + k.padding.bottom
 		if k.width > 0 { size.x = k.width }
@@ -268,7 +277,7 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: Measure_Text) -> Vec2 {
 }
 
 // Pass 2 (top-down): assign absolute positions and center content along both axes.
-ui_place :: proc(t: ^UI_Tree, i: int, origin: Vec2) {
+ui_place :: proc(t: ^UI_Tree, i: int, origin: shared.Vec2) {
 	n := &t.nodes[i]
 	n.rect.x, n.rect.y = origin.x, origin.y
 
@@ -305,7 +314,7 @@ ui_place :: proc(t: ^UI_Tree, i: int, origin: Vec2) {
 		}
 	}
 
-	cursor := Vec2{cursor_x, cursor_y}
+	cursor := shared.Vec2{cursor_x, cursor_y}
 
 	for ci in n.children[:n.child_count] {
 		child := &t.nodes[ci]
@@ -329,7 +338,7 @@ ui_place :: proc(t: ^UI_Tree, i: int, origin: Vec2) {
 	}
 }
 
-set_node_background_image :: proc(t: ^UI_Tree, i: int, texture_id: Texture_Id) {
+set_node_background_image :: proc(t: ^UI_Tree, i: int, texture_id: shared.Texture_Id) {
 	n := &t.nodes[i]
 	n.background.type = .Image
 	n.background.texture_id = texture_id

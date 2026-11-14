@@ -1,17 +1,18 @@
-package shared
+package core
 
+import "../shared"
 import "core:fmt"
 // Generic drawing: tree + interaction + renderer -> draw calls.
 // No raylib here, so this is as testable as the layout.
 
-ui_draw :: proc(t: ^UI_Tree, ix: Interaction, r: Renderer, scale: f32) {
+ui_draw :: proc(t: ^UI_Tree, ix: Interaction, r: shared.Renderer, scale: f32) {
 	ui_draw_node(t, t.root, ix, r, scale)
 }
 
 @(private)
-ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: Renderer, scale: f32) {
+ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: shared.Renderer, scale: f32) {
 	n := &t.nodes[i]
-	rect := Rect{n.rect.x * scale, n.rect.y * scale, n.rect.w * scale, n.rect.h * scale}
+	rect := shared.Rect{n.rect.x * scale, n.rect.y * scale, n.rect.w * scale, n.rect.h * scale}
 	#partial switch n.background.type {
 	case .Color: panic("Background not implemented for 'Color' type")
 	case .Image: // Draw background texture scaled to the node's rect
@@ -34,17 +35,18 @@ ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: Renderer, scale: f
 			case .Center: x += (rect.w - r.measure_text(s, size)) / 2
 			case .End: x += rect.w - r.measure_text(s, size)
 			}
-			r.draw_text(s, {x, rect.y + f32(li) * line_h}, size, k.color)
+			r.draw_text(s, {x, rect.y + f32(li) * line_h}, size, k.color, k.font)
 		}
 	case Button:
 		visual := button_visual(ix, i)
-		bg: Color
+		bg: shared.Color
 		switch visual {
 		case .Rest: bg = k.normal_color
 		case .Hover, .Focused: bg = k.hover_color
 		case .Pressed: bg = k.pressed_color
 		}
-		border := visual == .Rest ? Color{200, 200, 200, 255} : Color{255, 215, 0, 255}
+		border :=
+			visual == .Rest ? shared.Color{200, 200, 200, 255} : shared.Color{255, 215, 0, 255}
 
 		r.fill_rect(rect, bg)
 		r.outline_rect(rect, 2 * scale, border)
@@ -56,6 +58,7 @@ ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: Renderer, scale: f
 			{rect.x + (rect.w - tw) / 2, rect.y + (rect.h - f32(size)) / 2},
 			size,
 			{255, 255, 255, 255},
+			k.font,
 		)
 	}
 }

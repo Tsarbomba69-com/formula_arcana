@@ -11,6 +11,7 @@ Context :: struct {
 	viewport: shared.Viewport,
 	renderer: shared.Renderer,
 	tex_mgr:  platform.Texture_Manager,
+	font_mgr: platform.Font_Manager,
 }
 
 // ---- One state type per screen (stubs, to be grown) ------------------------

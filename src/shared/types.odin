@@ -42,3 +42,15 @@ Nav_Key :: enum {
 Key_Input :: struct {
 	key: Nav_Key,
 }
+
+// Texture_Id uniquely identifies a loaded GPU texture asset.
+Texture_Id :: distinct u32
+
+// INVALID_TEXTURE_ID represents an unassigned or missing texture reference.
+INVALID_TEXTURE_ID :: Texture_Id(0)
+
+Font_Id :: distinct u32
+
+INVALID_FONT_ID :: Font_Id(0)
+
+Color :: [4]u8

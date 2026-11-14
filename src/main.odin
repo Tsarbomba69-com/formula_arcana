@@ -17,11 +17,13 @@ Game :: struct {
 
 init :: proc(app: ^Game, w, h: i32) {
 	tm := &app.ctx.tex_mgr
+	fm := &app.ctx.font_mgr
 	app.ctx = {
 		config   = core.default_config(),
 		viewport = shared.viewport_of(w, h),
-		renderer = platform.raylib_renderer(tm),
+		renderer = platform.raylib_renderer(tm, fm),
 		tex_mgr  = platform.init_texture_manager(),
+		font_mgr = platform.init_font_manager(),
 	}
 	app.screen = features.enter(core.Go_Main_Menu{}, &app.ctx)
 }

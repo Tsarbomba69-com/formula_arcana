@@ -13,9 +13,9 @@ Menu_Action :: enum int {
 }
 
 Menu_State :: struct {
-	tree:     shared.UI_Tree,
+	tree:     core.UI_Tree,
 	viewport: shared.Viewport,
-	ix:       shared.Interaction, // focus / hover / pressed, one place
+	ix:       core.Interaction, // focus / hover / pressed, one place
 }
 
 BUTTON_WIDTH :: 360
@@ -26,17 +26,19 @@ MINT :: shared.Color{74, 222, 154, 255}
 MIST :: shared.Color{140, 160, 170, 255}
 
 add_button :: proc(
-	t: ^shared.UI_Tree,
+	t: ^core.UI_Tree,
 	label: string,
 	action: Menu_Action,
+	font: shared.Font_Id,
 	normal, hover, pressed: shared.Color,
 ) -> int {
-	return shared.ui_add(
+	return core.ui_add(
 		t,
-		shared.Button {
+		core.Button {
 			label = label,
 			action = int(action),
 			width = BUTTON_WIDTH,
+			font = font,
 			normal_color = normal,
 			hover_color = hover,
 			pressed_color = pressed,
@@ -48,36 +50,43 @@ add_button :: proc(
 init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 	state.viewport = ctx.viewport
 	t := &state.tree
-	background_path: cstring = "assets/ui/main_menu_bg.png"
+	background_path: cstring = "assets/images/main_menu_bg.png"
 	background, ok := platform.load_texture_from_file(&ctx^.tex_mgr, background_path)
+	// Load at 64px base size so the 64px title and smaller UI elements both render cleanly
+	ui_font_path: cstring = "assets/fonts/ChakraPetch-SemiBold.ttf"
+	ui_font, ok_font := platform.load_font_from_file(&ctx.font_mgr, ui_font_path, 64)
+	if !ok_font {
+		log.warnf("Failed to load UI font at %s, falling back to default", ui_font_path)
+	}
 
-	eyebrow := shared.ui_add(
+	eyebrow := core.ui_add(
 		t,
-		shared.Text{content = "THE LOGIC ALCHEMIST", font_size = 12, color = MINT},
+		core.Text{content = "THE LOGIC ALCHEMIST", font_size = 20, color = MINT, font = ui_font},
 	)
-	top := shared.ui_add(
+	top := core.ui_add(
 		t,
-		shared.Text{content = "FORMULA", font_size = 64, color = WHITE, is_bold = true},
+		core.Text{content = "FORMULA", font_size = 64, color = WHITE, is_bold = true, font = ui_font},
 	)
-	bottom := shared.ui_add(
+	bottom := core.ui_add(
 		t,
-		shared.Text{content = "ARCANA", font_size = 48, color = CYAN, is_bold = true},
+		core.Text{content = "ARCANA", font_size = 48, color = CYAN, is_bold = true, font = ui_font},
 	)
-	wordmark := shared.ui_add(
+	wordmark := core.ui_add(
 		t,
-		shared.Container{direction = .Vertical, alignment = .Center, spacing = 4},
+		core.Container{direction = .Vertical, alignment = .Center, spacing = 4},
 		top,
 		bottom,
 	)
 
-	tagline := shared.ui_add(
+	tagline := core.ui_add(
 		t,
-		shared.Text {
+		core.Text {
 			content = "Transmute logic into power. Restore the celestial codex one equation at a time.",
 			font_size = 16,
 			color = MIST,
 			align = .Center,
 			max_width = BUTTON_WIDTH,
+			font = ui_font,
 		},
 	)
 
@@ -85,6 +94,7 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		t,
 		"Enter the Codex",
 		.Enter_Codex,
+		ui_font,
 		{22, 70, 78, 255},
 		{30, 95, 105, 255},
 		{14, 50, 56, 255},
@@ -93,6 +103,7 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		t,
 		"Archives",
 		.Archives,
+		ui_font,
 		{28, 38, 44, 255},
 		{40, 54, 62, 255},
 		{20, 28, 32, 255},
@@ -101,13 +112,14 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		t,
 		"Settings",
 		.Settings,
+		ui_font,
 		{28, 38, 44, 255},
 		{40, 54, 62, 255},
 		{20, 28, 32, 255},
 	)
-	buttons := shared.ui_add(
+	buttons := core.ui_add(
 		t,
-		shared.Container{direction = .Vertical, alignment = .Center, spacing = 16},
+		core.Container{direction = .Vertical, alignment = .Center, spacing = 16},
 		enter,
 		archives,
 		settings,
@@ -115,9 +127,9 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 
 	// Root (added last)
 	design := ctx.viewport.size / ctx.viewport.scale
-	shared.ui_add(
+	core.ui_add(
 		t,
-		shared.Container {
+		core.Container {
 			direction = .Vertical,
 			alignment = .Center,
 			spacing   = 24,
@@ -131,12 +143,12 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		buttons,
 	)
 
-	state.ix.focus = shared.ui_first_button(t)
+	state.ix.focus = core.ui_first_button(t)
 
 	if !ok {
 		log.warnf("Failed to load button background texture at %s", background_path)
 	} else {
-		shared.set_node_background_image(t, t.root, background)
+		core.set_node_background_image(t, t.root, background)
 	}
 
 	layout_menu(&state, ctx)
@@ -147,7 +159,7 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 layout_menu :: proc(state: ^Menu_State, ctx: ^Context) {
 	state.viewport = ctx.viewport
 	design := ctx.viewport.size / ctx.viewport.scale
-	shared.ui_layout(&state.tree, design, ctx.renderer.measure_text)
+	core.ui_layout(&state.tree, design, ctx.renderer.measure_text)
 }
 
 // Consumes the frame's events; returns where to go next (nil == stay).
@@ -159,7 +171,7 @@ update_menu :: proc(state: ^Menu_State, events: []core.Event) -> core.Navigation
 		#partial switch e in ev {
 		case shared.Mouse_Input:
 			p := e.position / state.viewport.scale // real px -> design space
-			hit, over := shared.ui_button_at(t, p)
+			hit, over := core.ui_button_at(t, p)
 
 			if over {
 				state.ix.hover = hit
@@ -183,8 +195,8 @@ update_menu :: proc(state: ^Menu_State, events: []core.Event) -> core.Navigation
 			}
 
 		case shared.Key_Input: switch e.key {
-				case .Up: shared.ui_focus_step(t, &state.ix, -1)
-				case .Down: shared.ui_focus_step(t, &state.ix, +1)
+				case .Up: core.ui_focus_step(t, &state.ix, -1)
+				case .Down: core.ui_focus_step(t, &state.ix, +1)
 				case .Confirm: nav = menu_navigate(t, state.ix.focus)
 				case .Back:
 				}
@@ -195,8 +207,8 @@ update_menu :: proc(state: ^Menu_State, events: []core.Event) -> core.Navigation
 }
 
 // The ONLY place that knows what each button means.
-menu_navigate :: proc(t: ^shared.UI_Tree, node: int) -> core.Navigation {
-	button, ok := t.nodes[node].kind.(shared.Button)
+menu_navigate :: proc(t: ^core.UI_Tree, node: int) -> core.Navigation {
+	button, ok := t.nodes[node].kind.(core.Button)
 	if !ok { return nil }
 
 	switch Menu_Action(button.action) {
@@ -208,5 +220,9 @@ menu_navigate :: proc(t: ^shared.UI_Tree, node: int) -> core.Navigation {
 }
 
 draw_menu :: proc(state: ^Menu_State, r: shared.Renderer) {
-	shared.ui_draw(&state.tree, state.ix, r, state.viewport.scale)
+	core.ui_draw(&state.tree, state.ix, r, state.viewport.scale)
+}
+
+load_font :: proc(text: ^core.Text, font_path: string) {
+
 }

@@ -5,7 +5,7 @@ import "../shared"
 import "core:testing"
 
 // No window, no raylib: a fake measure is all layout needs.
-fake_measure :: proc(text: string, font_size: i32) -> f32 {
+fake_measure :: proc(text: string, font_size: i32, font_id: shared.Font_Id) -> f32 {
 	return f32(len(text)) * f32(font_size) * 0.5
 }
 
@@ -14,7 +14,7 @@ test_ctx :: proc() -> Context {
 }
 
 button_center :: proc(m: ^Menu_State, which: int) -> shared.Vec2 {
-	list, _ := shared.ui_buttons(&m.tree)
+	list, _ := core.ui_buttons(&m.tree)
 	r := m.tree.nodes[list[which]].rect
 	return {r.x + r.w / 2, r.y + r.h / 2}
 }
@@ -23,7 +23,7 @@ button_center :: proc(m: ^Menu_State, which: int) -> shared.Vec2 {
 buttons_share_width_and_center :: proc(t: ^testing.T) {
 	ctx := test_ctx()
 	m := init_menu(&ctx)
-	list, count := shared.ui_buttons(&m.tree)
+	list, count := core.ui_buttons(&m.tree)
 	testing.expect_value(t, count, 3)
 
 	first := m.tree.nodes[list[0]].rect
@@ -39,7 +39,7 @@ tagline_wraps_to_two_lines :: proc(t: ^testing.T) {
 	ctx := test_ctx()
 	m := init_menu(&ctx)
 	for i in 0 ..< m.tree.count {
-		if txt, ok := m.tree.nodes[i].kind.(shared.Text); ok && txt.max_width > 0 {
+		if txt, ok := m.tree.nodes[i].kind.(core.Text); ok && txt.max_width > 0 {
 			testing.expect_value(t, txt.line_count, 2)
 		}
 	}
@@ -103,7 +103,7 @@ background_defaults_to_none :: proc(t: ^testing.T) {
 	// Act & Assert
 	for i in 0 ..< m.tree.count {
 		node := m.tree.nodes[i]
-		testing.expect_value(t, node.background.type, shared.UI_Background_Type.None)
+		testing.expect_value(t, node.background.type, core.UI_Background_Type.None)
 	}
 }
 
@@ -112,17 +112,35 @@ widget_accepts_background_image :: proc(t: ^testing.T) {
 	// Arrange
 	ctx := test_ctx()
 	m := init_menu(&ctx)
-	list, count := shared.ui_buttons(&m.tree)
+	list, count := core.ui_buttons(&m.tree)
 	testing.expect(t, count > 0, "expected at least one button")
 
 	btn_idx := list[0]
 	test_texture := shared.Texture_Id(101)
 
 	// Act
-	shared.set_node_background_image(&m.tree, btn_idx, test_texture)
+	core.set_node_background_image(&m.tree, btn_idx, test_texture)
 
 	// Assert
 	node := m.tree.nodes[btn_idx]
-	testing.expect_value(t, node.background.type, shared.UI_Background_Type.Image)
+	testing.expect_value(t, node.background.type, core.UI_Background_Type.Image)
 	testing.expect_value(t, node.background.texture_id, test_texture)
 }
+
+// @(test)
+// loads_font_into_text_object :: proc(t: ^testing.T) {
+// 	Arrange
+// 	font_path := "assets/fonts/default.ttf"
+// 	txt := core.Text{}
+
+// 	Act
+// 	load_font(&txt, font_path)
+
+// 	Assert
+// 	testing.expect(
+// 		t,
+// 		txt.font.is_loaded,
+// 		"font should be successfully loaded into the text object",
+// 	)
+// 	testing.expect_value(t, txt.font.path, font_path)
+// }
