@@ -20,7 +20,9 @@ Go_Main_Menu :: struct {}
 Go_Level_Select :: struct {
 	difficulty: Difficulty,
 }
-Go_Gameplay :: struct {}
+Go_Gameplay :: struct {
+	puzzle_index: int,
+}
 Go_Archives :: struct {}
 Go_Settings :: struct {
 	tab: Settings_Tab,

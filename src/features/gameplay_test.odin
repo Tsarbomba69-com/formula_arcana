@@ -33,7 +33,10 @@ given_a_puzzle_is_selected_when_gameplay_opens_then_goal_transforms_and_empty_hi
 	t: ^testing.T,
 ) {
 	// Given: the player confirms the available puzzle.
-	navigation := update_puzzle_select({shared.Key_Input{.Confirm}})
+	selection := Level_Select_State {
+		viewport = shared.viewport_of(1440, 900),
+	}
+	navigation := update_puzzle_select(&selection, {shared.Key_Input{.Confirm}})
 	_, opens_gameplay := navigation.(core.Go_Gameplay)
 	testing.expect(t, opens_gameplay, "confirming the puzzle should open gameplay")
 	ctx := Context {

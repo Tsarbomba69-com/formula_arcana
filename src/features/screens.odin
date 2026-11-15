@@ -17,8 +17,10 @@ Context :: struct {
 
 Level_Select_State :: struct {
 	unlocked:   core.Level_Set, // from save data, not from the menu
-	selected:   Maybe(int),
+	selected:   int,
 	difficulty: core.Difficulty,
+	viewport:   shared.Viewport,
+	pressed:    Maybe(int),
 }
 
 Settings_State :: struct {
@@ -46,8 +48,16 @@ enter :: proc(nav: core.Navigation, ctx: ^Context) -> Screen_State {
 	switch n in nav {
 	case core.Go_Main_Menu: return init_menu(ctx)
 	case core.Go_Level_Select:
-		return Level_Select_State{unlocked = ctx.progress.unlocked, difficulty = n.difficulty}
-	case core.Go_Gameplay: return init_gameplay(FIRST_PUZZLE)
+		return Level_Select_State {
+				unlocked = ctx.progress.unlocked,
+				difficulty = n.difficulty,
+				viewport = ctx.viewport,
+			}
+	case core.Go_Gameplay:
+		if n.puzzle_index >= 0 && n.puzzle_index < len(PUZZLES) {
+			return init_gameplay(PUZZLES[n.puzzle_index])
+		}
+		return nil
 	case core.Go_Archives: return Archives_State{}
 	case core.Go_Settings:
 		return Settings_State {
@@ -63,7 +73,7 @@ enter :: proc(nav: core.Navigation, ctx: ^Context) -> Screen_State {
 update_screen :: proc(s: ^Screen_State, events: []core.Event) -> core.Navigation {
 	switch &v in s^ {
 	case Menu_State: return update_menu(&v, events)
-	case Level_Select_State: return update_puzzle_select(events)
+	case Level_Select_State: return update_puzzle_select(&v, events)
 	case Gameplay_State: return update_gameplay(events)
 	case Settings_State: return back_to_menu(events)
 	case Archives_State: return back_to_menu(events)
@@ -81,33 +91,157 @@ resize_screen :: proc(s: ^Screen_State, ctx: ^Context) {
 draw_screen :: proc(s: ^Screen_State, ctx: Context) {
 	switch &v in s^ {
 	case Menu_State: draw_menu(&v, ctx.renderer)
-	case Level_Select_State: draw_puzzle_select(ctx)
+	case Level_Select_State: draw_puzzle_select(v, ctx)
 	case Settings_State: draw_placeholder(ctx, "SETTINGS")
 	case Archives_State: draw_placeholder(ctx, "ARCHIVES")
 	case Gameplay_State: draw_gameplay(v, ctx)
 	case nil:
 	}
 }
+// TODO: Puzzle selection should be it's own file
+PUZZLE_COLUMNS :: 4
+PUZZLE_GRID_X :: f32(210)
+PUZZLE_GRID_Y :: f32(300)
+PUZZLE_CARD_W :: f32(246)
+PUZZLE_CARD_H :: f32(72)
+PUZZLE_CARD_GAP :: f32(12)
 
-update_puzzle_select :: proc(events: []core.Event) -> core.Navigation {
+puzzle_card_rect :: proc(index: int) -> shared.Rect {
+	column := index % PUZZLE_COLUMNS
+	row := index / PUZZLE_COLUMNS
+	return {
+		PUZZLE_GRID_X + f32(column) * (PUZZLE_CARD_W + PUZZLE_CARD_GAP),
+		PUZZLE_GRID_Y + f32(row) * (PUZZLE_CARD_H + PUZZLE_CARD_GAP),
+		PUZZLE_CARD_W,
+		PUZZLE_CARD_H,
+	}
+}
+
+puzzle_card_at :: proc(position: shared.Vec2) -> int {
+	for index in 0 ..< len(PUZZLES) {
+		if shared.contains_point(puzzle_card_rect(index), position) {
+			return index
+		}
+	}
+	return -1
+}
+
+update_puzzle_select :: proc(state: ^Level_Select_State, events: []core.Event) -> core.Navigation {
 	for event in events {
-		if key, ok := event.(shared.Key_Input); ok {
-			switch key.key {
-			case .Up, .Down:
-			case .Confirm: return core.Go_Gameplay{}
-			case .Back: return core.Go_Main_Menu{}
+		#partial switch input in event {
+		case shared.Key_Input: switch input.key {
+				case .Up:
+					state.selected =
+							(state.selected + len(PUZZLES) - PUZZLE_COLUMNS) % len(PUZZLES)
+				case .Down: state.selected = (state.selected + PUZZLE_COLUMNS) % len(PUZZLES)
+				case .Confirm: return core.Go_Gameplay{puzzle_index = state.selected}
+				case .Back: return core.Go_Main_Menu{}
+				}
+
+		case shared.Mouse_Input:
+			position := input.position / state.viewport.scale
+			hit := puzzle_card_at(position)
+
+			if hit >= 0 {
+				state.selected = hit
+			}
+
+			if input.pressed && hit >= 0 {
+				state.pressed = hit
+			}
+
+			if input.released {
+				if pressed, ok := state.pressed.?; ok {
+					state.pressed = nil
+					if hit == pressed {
+						return core.Go_Gameplay{puzzle_index = pressed}
+					}
+				}
 			}
 		}
 	}
 	return nil
 }
 
-draw_puzzle_select :: proc(ctx: Context) {
-	s := ctx.viewport.scale
-	ctx.renderer.draw_text("PUZZLE SELECT", {72 * s, 72 * s}, i32(30 * s), {230, 235, 240, 255})
-	ctx.renderer.draw_text(FIRST_PUZZLE.title, {72 * s, 150 * s}, i32(24 * s), {100, 220, 190, 255})
-	ctx.renderer.draw_text("Goal: x + 0 = x", {72 * s, 194 * s}, i32(20 * s), {230, 235, 240, 255})
-	ctx.renderer.draw_text("Enter: open puzzle", {72 * s, 850 * s}, i32(16 * s), {145, 165, 180, 255})
+puzzle_stars :: proc(rating: int) -> string {
+	switch rating {
+	case 1: return "★☆☆"
+	case 2: return "★★☆"
+	case 3: return "★★★"
+	}
+	return "☆☆☆"
+}
+
+draw_puzzle_select :: proc(state: Level_Select_State, ctx: Context) {
+	scale := ctx.viewport.scale
+	renderer := ctx.renderer
+	muted := shared.Color{145, 165, 180, 255}
+	white := shared.Color{230, 235, 240, 255}
+	mint := shared.Color{100, 220, 190, 255}
+
+	// Centered selection panel.
+	renderer.fill_rect({180 * scale, 100 * scale, 1080 * scale, 680 * scale}, {8, 24, 34, 220})
+	renderer.outline_rect(
+		{180 * scale, 100 * scale, 1080 * scale, 680 * scale},
+		2 * scale,
+		{80, 190, 190, 255},
+	)
+
+	renderer.draw_text("THE LOGIC ALCHEMIST", {640 * scale, 135 * scale}, i32(16 * scale), mint)
+	renderer.draw_text("PUZZLE SELECT", {560 * scale, 165 * scale}, i32(34 * scale), white)
+	renderer.draw_text(
+		"Select a formula to transmute from the codex archives.",
+		{420 * scale, 215 * scale},
+		i32(15 * scale),
+		white,
+	)
+
+	for index in 0 ..< len(PUZZLES) {
+		rect := puzzle_card_rect(index)
+		card := shared.Rect{rect.x * scale, rect.y * scale, rect.w * scale, rect.h * scale}
+		selected := index == state.selected
+
+		background := shared.Color{8, 20, 28, 255}
+		border := shared.Color{110, 130, 140, 255}
+		if selected {
+			background = shared.Color{18, 60, 68, 255}
+			border = mint
+		}
+
+		renderer.fill_rect(card, background)
+		renderer.outline_rect(card, 2 * scale, border)
+		renderer.draw_text(
+			PUZZLES[index].title,
+			{(rect.x + 8) * scale, (rect.y + 8) * scale},
+			i32(15 * scale),
+			mint,
+		)
+		renderer.draw_text(
+			"GOAL:",
+			{(rect.x + 8) * scale, (rect.y + 34) * scale},
+			i32(13 * scale),
+			white,
+		)
+		renderer.draw_text(
+			PUZZLES[index].goal,
+			{(rect.x + 54) * scale, (rect.y + 34) * scale},
+			i32(13 * scale),
+			white,
+		)
+		renderer.draw_text(
+			puzzle_stars(PUZZLES[index].rating),
+			{(rect.x + rect.w - 48) * scale, (rect.y + 52) * scale},
+			i32(13 * scale),
+			mint,
+		)
+	}
+
+	renderer.draw_text(
+		"Up/Down: select    Enter: open puzzle    Esc: back",
+		{430 * scale, 835 * scale},
+		i32(16 * scale),
+		muted,
+	)
 }
 
 // ---- Placeholders ----------------------------------------------------------

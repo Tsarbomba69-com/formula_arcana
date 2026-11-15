@@ -251,3 +251,50 @@ given_settings_button_when_clicked_then_audio_settings_are_requested :: proc(t: 
 		testing.expect_value(t, settings.tab, core.Settings_Tab.Audio)
 	}
 }
+
+@(test)
+given_first_puzzle_is_selected_when_moving_down_and_confirming_then_second_row_puzzle_opens :: proc(
+	t: ^testing.T,
+) {
+	// Given: puzzle selection is open with the first card selected.
+	state := Level_Select_State {
+		selected = 0,
+		viewport = shared.viewport_of(1440, 900),
+	}
+
+	// When: the player moves down one row and confirms.
+	_ = update_puzzle_select(&state, {shared.Key_Input{.Down}})
+	navigation := update_puzzle_select(&state, {shared.Key_Input{.Confirm}})
+
+	// Then: the selected card’s puzzle is opened.
+	gameplay, ok := navigation.(core.Go_Gameplay)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, gameplay.puzzle_index, PUZZLE_COLUMNS)
+	}
+}
+
+@(test)
+given_card_is_clicked_when_released_on_same_card_then_that_puzzle_opens :: proc(t: ^testing.T) {
+	// Given: the player presses the first puzzle card.
+	state := Level_Select_State {
+		selected = 0,
+		viewport = shared.viewport_of(1440, 900),
+	}
+	rect := puzzle_card_rect(0)
+	position := shared.Vec2{rect.x + rect.w / 2, rect.y + rect.h / 2}
+
+	// When: the player releases over that same card.
+	_ = update_puzzle_select(&state, {shared.Mouse_Input{position = position, pressed = true}})
+	navigation := update_puzzle_select(
+		&state,
+		{shared.Mouse_Input{position = position, released = true}},
+	)
+
+	// Then: that puzzle is opened.
+	gameplay, ok := navigation.(core.Go_Gameplay)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, gameplay.puzzle_index, 0)
+	}
+}
