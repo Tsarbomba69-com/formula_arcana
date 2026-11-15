@@ -26,7 +26,7 @@ ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: shared.Renderer, s
 			}
 	case Text:
 		size := i32(f32(k.font_size) * scale)
-		line_h := f32(k.font_size) * LINE_HEIGHT * scale
+		line_h := f32(k.font_size) * DEFAULT_LINE_HEIGHT_SCALE * scale
 		for ln, li in k.lines[:k.line_count] {
 			s := k.content[ln[0]:ln[1]]
 			x := rect.x
@@ -60,6 +60,10 @@ ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: shared.Renderer, s
 			{255, 255, 255, 255},
 			k.font,
 		)
+	}
+
+	if n.border.thickness > 0 && r.outline_rect != nil {
+		r.outline_rect(rect, n.border.thickness * scale, n.border.color)
 	}
 }
 

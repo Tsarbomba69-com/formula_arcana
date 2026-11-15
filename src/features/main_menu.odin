@@ -18,11 +18,12 @@ Menu_State :: struct {
 }
 
 BUTTON_WIDTH :: 360
-
+// TODO: I think colors should be in shared
 WHITE :: shared.Color{255, 255, 255, 255}
 CYAN :: shared.Color{77, 216, 232, 255}
 MINT :: shared.Color{74, 222, 154, 255}
 MIST :: shared.Color{140, 160, 170, 255}
+RED :: shared.Color{255, 0, 0, 255}
 
 add_button :: proc(
 	t: ^core.UI_Tree,
@@ -74,11 +75,23 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 	)
 	top := core.ui_add(
 		t,
-		core.Text{content = "FORMULA", font_size = 64, color = WHITE, is_bold = true, font = ui_font},
+		core.Text {
+			content = "FORMULA",
+			font_size = 64,
+			color = WHITE,
+			is_bold = true,
+			font = ui_font,
+		},
 	)
 	bottom := core.ui_add(
 		t,
-		core.Text{content = "ARCANA", font_size = 48, color = CYAN, is_bold = true, font = ui_font},
+		core.Text {
+			content = "ARCANA",
+			font_size = 48,
+			color = CYAN,
+			is_bold = true,
+			font = ui_font,
+		},
 	)
 	wordmark := core.ui_add(
 		t,
@@ -86,13 +99,12 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		top,
 		bottom,
 	)
-
 	tagline := core.ui_add(
 		t,
 		core.Text {
 			content = "Transmute logic into power. Restore the celestial codex one equation at a time.",
 			font_size = 16,
-			color = MIST,
+			color = WHITE,
 			align = .Center,
 			max_width = BUTTON_WIDTH,
 			font = ui_font,
@@ -151,7 +163,6 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		tagline,
 		buttons,
 	)
-
 	state.ix.focus = core.ui_first_button(t)
 
 	if has_texture_loader {

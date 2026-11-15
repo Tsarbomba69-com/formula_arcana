@@ -4,11 +4,10 @@ import "../shared"
 // Generic widget tree + layout. Knows NOTHING about screens or game messages:
 // a button just carries an `action` id, and the owning feature decides what it means.
 // The whole tree is value-typed: fixed array, children by index, copy-safe.
-// TODO: This should be in core
 UI_MAX_NODES :: 16
 UI_MAX_CHILDREN :: 8
 UI_MAX_LINES :: 4
-LINE_HEIGHT :: 1.3
+DEFAULT_LINE_HEIGHT_SCALE :: 1.0
 BUTTON_FONT_SIZE :: 20
 
 Insets :: struct {
@@ -38,16 +37,17 @@ Container :: struct {
 }
 
 Text :: struct {
-	content:    string,
-	font_size:  i32,
-	color:      shared.Color,
-	is_bold:    bool,
-	font:       shared.Font_Id,
-	align:      Alignment, // line alignment inside the node's own box
-	max_width:  f32, // 0 == never wrap
+	content:           string,
+	font_size:         i32,
+	line_height_scale: f32, // 0 uses DEFAULT_LINE_HEIGHT_SCALE
+	color:             shared.Color,
+	is_bold:           bool,
+	font:              shared.Font_Id,
+	align:             Alignment, // line alignment inside the node's own box
+	max_width:         f32, // 0 == never wrap
 	// -- layout output (filled by ui_layout; byte ranges into `content`) --
-	line_count: int,
-	lines:      [UI_MAX_LINES][2]int,
+	line_count:        int,
+	lines:             [UI_MAX_LINES][2]int,
 }
 
 Button :: struct {
@@ -73,6 +73,11 @@ UI_Background :: struct {
 	texture_id: shared.Texture_Id,
 }
 
+UI_Border :: struct {
+	color:     shared.Color,
+	thickness: f32,
+}
+
 Node_Kind :: union {
 	Container,
 	Text,
@@ -85,6 +90,7 @@ Node :: struct {
 	children:    [UI_MAX_CHILDREN]int,
 	child_count: int,
 	background:  UI_Background,
+	border:      UI_Border,
 }
 
 UI_Tree :: struct {
@@ -244,7 +250,7 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: shared.Measure_Text) -> shared.
 	case nil:
 	case Text:
 		w := text_wrap(&k, measure)
-		size = {w, f32(k.line_count) * f32(k.font_size) * LINE_HEIGHT}
+		size = {w, f32(k.line_count) * text_line_height(k)}
 	case Button:
 		w := measure(k.label, BUTTON_FONT_SIZE, k.font) + k.padding.left + k.padding.right
 		if k.width > 0 { w = k.width }
@@ -342,4 +348,16 @@ set_node_background_image :: proc(t: ^UI_Tree, i: int, texture_id: shared.Textur
 	n := &t.nodes[i]
 	n.background.type = .Image
 	n.background.texture_id = texture_id
+}
+
+set_node_border :: proc(t: ^UI_Tree, i: int, border: UI_Border) {
+	t.nodes[i].border = border
+}
+
+text_line_height :: proc(k: Text) -> f32 {
+	scale := k.line_height_scale
+	if scale <= 0 {
+		scale = DEFAULT_LINE_HEIGHT_SCALE
+	}
+	return f32(k.font_size) * scale
 }

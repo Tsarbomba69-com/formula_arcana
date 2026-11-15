@@ -16,7 +16,7 @@ Game_State :: struct {
 
 @(private = "file")
 g_host: ^hot_reload.Host_API
-g_api:  hot_reload.Game_Module_API
+g_api: hot_reload.Game_Module_API
 
 host_load_texture :: proc(path: cstring) -> (shared.Texture_Id, bool) {
 	id := g_host.load_texture(g_host.user_data, path)
@@ -28,31 +28,84 @@ host_load_font :: proc(path: cstring, size: i32) -> (shared.Font_Id, bool) {
 	return shared.Font_Id(id), id != 0
 }
 
-module_measure_text :: proc(text: string, size: i32, font_id: shared.Font_Id = shared.INVALID_FONT_ID) -> f32 {
+module_measure_text :: proc(
+	text: string,
+	size: i32,
+	font_id: shared.Font_Id = shared.INVALID_FONT_ID,
+) -> f32 {
 	cstr := strings.clone_to_cstring(text, context.temp_allocator)
 	return g_host.measure_text(g_host.user_data, cstr, size, u32(font_id))
 }
 
-module_draw_text :: proc(text: string, pos: shared.Vec2, size: i32, color: shared.Color, font_id: shared.Font_Id = shared.INVALID_FONT_ID) {
+module_draw_text :: proc(
+	text: string,
+	pos: shared.Vec2,
+	size: i32,
+	color: shared.Color,
+	font_id: shared.Font_Id = shared.INVALID_FONT_ID,
+) {
 	cstr := strings.clone_to_cstring(text, context.temp_allocator)
-	g_host.draw_text(g_host.user_data, cstr, pos.x, pos.y, size, color[0], color[1], color[2], color[3], u32(font_id))
+	g_host.draw_text(
+		g_host.user_data,
+		cstr,
+		pos.x,
+		pos.y,
+		size,
+		color[0],
+		color[1],
+		color[2],
+		color[3],
+		u32(font_id),
+	)
 }
 
 module_fill_rect :: proc(rect: shared.Rect, color: shared.Color) {
-	g_host.fill_rect(g_host.user_data, rect.x, rect.y, rect.w, rect.h, color[0], color[1], color[2], color[3])
+	g_host.fill_rect(
+		g_host.user_data,
+		rect.x,
+		rect.y,
+		rect.w,
+		rect.h,
+		color[0],
+		color[1],
+		color[2],
+		color[3],
+	)
 }
 
 module_outline_rect :: proc(rect: shared.Rect, thickness: f32, color: shared.Color) {
-	g_host.outline_rect(g_host.user_data, rect.x, rect.y, rect.w, rect.h, thickness, color[0], color[1], color[2], color[3])
+	g_host.outline_rect(
+		g_host.user_data,
+		rect.x,
+		rect.y,
+		rect.w,
+		rect.h,
+		thickness,
+		color[0],
+		color[1],
+		color[2],
+		color[3],
+	)
 }
 
 module_draw_texture :: proc(id: shared.Texture_Id, rect: shared.Rect, tint: shared.Color) {
-	g_host.draw_texture(g_host.user_data, u32(id), rect.x, rect.y, rect.w, rect.h, tint[0], tint[1], tint[2], tint[3])
+	g_host.draw_texture(
+		g_host.user_data,
+		u32(id),
+		rect.x,
+		rect.y,
+		rect.w,
+		rect.h,
+		tint[0],
+		tint[1],
+		tint[2],
+		tint[3],
+	)
 }
 
-noop_begin :: proc() {}
-noop_end :: proc() {}
-noop_clear :: proc(color: shared.Color) {}
+noop_begin :: proc() {  }
+noop_end :: proc() {  }
+noop_clear :: proc(color: shared.Color) {  }
 
 module_renderer :: proc() -> shared.Renderer {
 	return {
@@ -68,26 +121,36 @@ module_renderer :: proc() -> shared.Renderer {
 }
 
 @(private)
-game_initialize :: proc "c" (host: ^hot_reload.Host_API, width, height: i32, snapshot: hot_reload.Byte_Buffer) -> rawptr {
+game_initialize :: proc "c" (
+	host: ^hot_reload.Host_API,
+	width, height: i32,
+	snapshot: hot_reload.Byte_Buffer,
+) -> rawptr {
 	context = runtime.default_context()
-	if host == nil || host.abi_version != hot_reload.ABI_VERSION || host.struct_size < size_of(hot_reload.Host_API) do return nil
+	if host == nil ||
+	   host.abi_version != hot_reload.ABI_VERSION ||
+	   host.struct_size < size_of(hot_reload.Host_API) { return nil }
 	g_host = host
 	state := new(Game_State)
 	state.ctx = {
-		config = core.default_config(),
-		viewport = shared.viewport_of(width, height),
-		renderer = module_renderer(),
+		config       = core.default_config(),
+		viewport     = shared.viewport_of(width, height),
+		renderer     = module_renderer(),
 		load_texture = host_load_texture,
-		load_font = host_load_font,
+		load_font    = host_load_font,
 	}
 	navigation: core.Navigation = core.Go_Main_Menu{}
 	if snapshot.data != nil && snapshot.len >= 8 {
 		words := ([^]u32)(snapshot.data)
 		if words[0] == MODULE_STATE_VERSION {
 			switch words[1] {
-			case 1: navigation = core.Go_Level_Select{difficulty = .Standard}
+			case 1: navigation = core.Go_Level_Select {
+						difficulty = .Standard,
+					}
 			case 2: navigation = core.Go_Archives{}
-			case 3: navigation = core.Go_Settings{tab = .Audio}
+			case 3: navigation = core.Go_Settings {
+						tab = .Audio,
+					}
 			}
 		}
 	}
@@ -98,7 +161,7 @@ game_initialize :: proc "c" (host: ^hot_reload.Host_API, width, height: i32, sna
 @(private)
 game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count: u64) {
 	context = runtime.default_context()
-	if raw_state == nil do return
+	if raw_state == nil { return }
 	state := (^Game_State)(raw_state)
 	event_array := ([^]hot_reload.Hot_Event)(events)
 	for i in 0 ..< int(count) {
@@ -108,12 +171,15 @@ game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count
 			state.ctx.viewport = shared.viewport_of(event.width, event.height)
 			features.resize_screen(&state.screen, &state.ctx)
 		case hot_reload.EVENT_MOUSE_INPUT:
-			core_events := []core.Event{shared.Mouse_Input{
-				position = {event.x, event.y},
-				pressed = event.flags & hot_reload.EVENT_FLAG_PRESSED != 0,
-				released = event.flags & hot_reload.EVENT_FLAG_RELEASED != 0,
-			}}
-			if navigation := features.update_screen(&state.screen, core_events); navigation != nil {
+			core_events := []core.Event {
+				shared.Mouse_Input {
+					position = {event.x, event.y},
+					pressed = event.flags & hot_reload.EVENT_FLAG_PRESSED != 0,
+					released = event.flags & hot_reload.EVENT_FLAG_RELEASED != 0,
+				},
+			}
+			if navigation := features.update_screen(&state.screen, core_events);
+			   navigation != nil {
 				state.screen = features.enter(navigation, &state.ctx)
 			}
 		case hot_reload.EVENT_KEY_INPUT:
@@ -125,7 +191,8 @@ game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count
 			case hot_reload.KEY_BACK: key = .Back
 			}
 			core_events := []core.Event{shared.Key_Input{key}}
-			if navigation := features.update_screen(&state.screen, core_events); navigation != nil {
+			if navigation := features.update_screen(&state.screen, core_events);
+			   navigation != nil {
 				state.screen = features.enter(navigation, &state.ctx)
 			}
 		}
@@ -135,17 +202,21 @@ game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count
 @(private)
 game_draw :: proc "c" (raw_state: rawptr) {
 	context = runtime.default_context()
-	if raw_state == nil do return
+	if raw_state == nil { return }
 	state := (^Game_State)(raw_state)
 	features.draw_screen(&state.screen, state.ctx)
 }
 
 @(private)
-game_snapshot :: proc "c" (raw_state: rawptr, destination: hot_reload.Byte_Buffer, bytes_written: ^u64) -> u32 {
-	if raw_state == nil || bytes_written == nil do return 0
+game_snapshot :: proc "c" (
+	raw_state: rawptr,
+	destination: hot_reload.Byte_Buffer,
+	bytes_written: ^u64,
+) -> u32 {
+	if raw_state == nil || bytes_written == nil { return 0 }
 	bytes_written^ = 8
-	if destination.data == nil && destination.len == 0 do return 1
-	if destination.data == nil || destination.len < 8 do return 0
+	if destination.data == nil && destination.len == 0 { return 1 }
+	if destination.data == nil || destination.len < 8 { return 0 }
 	state := (^Game_State)(raw_state)
 	words := ([^]u32)(destination.data)
 	words[0] = MODULE_STATE_VERSION
@@ -162,7 +233,7 @@ game_snapshot :: proc "c" (raw_state: rawptr, destination: hot_reload.Byte_Buffe
 @(private)
 game_shutdown :: proc "c" (raw_state: rawptr) {
 	context = runtime.default_context()
-	if raw_state == nil do return
+	if raw_state == nil { return }
 	free((^Game_State)(raw_state))
 }
 
@@ -171,11 +242,11 @@ game_module_api_v1 :: proc "c" () -> ^hot_reload.Game_Module_API {
 	g_api = hot_reload.Game_Module_API {
 		abi_version = hot_reload.ABI_VERSION,
 		struct_size = u32(size_of(hot_reload.Game_Module_API)),
-		initialize = game_initialize,
-		update = game_update,
-		draw = game_draw,
-		snapshot = game_snapshot,
-		shutdown = game_shutdown,
+		initialize  = game_initialize,
+		update      = game_update,
+		draw        = game_draw,
+		snapshot    = game_snapshot,
+		shutdown    = game_shutdown,
 	}
 	return &g_api
 }

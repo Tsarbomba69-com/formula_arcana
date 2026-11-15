@@ -5,12 +5,12 @@ import "../shared"
 
 // Everything a screen needs from the app, passed in (never reached for).
 Context :: struct {
-	config:   core.Config,
-	progress: core.Progress,
-	viewport: shared.Viewport,
-	renderer: shared.Renderer,
-	load_texture: proc(cstring) -> (shared.Texture_Id, bool),
-	load_font:    proc(cstring, i32) -> (shared.Font_Id, bool),
+	config:       core.Config,
+	progress:     core.Progress,
+	viewport:     shared.Viewport,
+	renderer:     shared.Renderer,
+	load_texture: proc(_: cstring) -> (shared.Texture_Id, bool),
+	load_font:    proc(_: cstring, _: i32) -> (shared.Font_Id, bool),
 }
 
 // ---- One state type per screen (stubs, to be grown) ------------------------

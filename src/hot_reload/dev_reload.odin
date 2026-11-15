@@ -33,7 +33,7 @@ make_dev_reloader :: proc(
 	r.config.build_command = make([]string, len(build_command), allocator)
 	for part, i in build_command {
 		copy, err := strings.clone(part, allocator)
-		if err != nil do return {}
+		if err != nil { return {} }
 		r.config.build_command[i] = copy
 	}
 	r.config.source_roots = make([]string, 2, allocator)
@@ -45,9 +45,9 @@ make_dev_reloader :: proc(
 }
 
 destroy_dev_reloader :: proc(r: ^Dev_Reloader, allocator := context.allocator) {
-	if r == nil do return
+	if r == nil { return }
 	delete(r.config.build_command, allocator)
-	for root in r.config.source_roots do delete(root, allocator)
+	for root in r.config.source_roots { delete(root, allocator) }
 	delete(r.config.source_roots, allocator)
 	r^ = {}
 }
@@ -72,11 +72,11 @@ scan_sources :: proc(roots: []string) -> u64 {
 
 scan_directory :: proc(path: string, hash: u64) -> u64 {
 	result, err := os.read_all_directory_by_path(path, context.temp_allocator)
-	if err != nil do return hash
+	if err != nil { return hash }
 	defer os.file_info_slice_delete(result, context.temp_allocator)
 	mut_hash := hash
 	for info in result {
-		if info.name == ".git" || info.name == "bin" do continue
+		if info.name == ".git" || info.name == "bin" { continue }
 		if info.type == .Directory {
 			mut_hash = scan_directory(info.fullpath, mut_hash)
 		} else if watched_extension(info.name) {
@@ -88,30 +88,32 @@ scan_directory :: proc(path: string, hash: u64) -> u64 {
 
 hash_file_info :: proc(info: os.File_Info, hash: u64) -> u64 {
 	result := hash
-	for b in info.fullpath do result = (result ~ u64(b)) * 1099511628211
+	for b in info.fullpath { result = (result ~ u64(b)) * 1099511628211 }
 	result = (result ~ u64(info.size)) * 1099511628211
 	result = (result ~ u64(info.modification_time._nsec)) * 1099511628211
 	return result
 }
 
 watched_extension :: proc(name: string) -> bool {
-	return strings.has_suffix(name, ".odin") ||
-	       strings.has_suffix(name, ".sh") ||
-	       strings.has_suffix(name, ".json")
+	return(
+		strings.has_suffix(name, ".odin") ||
+		strings.has_suffix(name, ".sh") ||
+		strings.has_suffix(name, ".json") \
+	)
 }
 
 // Returns true only when the build command succeeds. Output is forwarded to
 // the console for diagnostics; no active runtime state is changed here.
 run_build_command :: proc(command: []string) -> bool {
-	if len(command) == 0 do return false
+	if len(command) == 0 { return false }
 	state, stdout, stderr, err := os.process_exec(
 		os.Process_Desc{command = command},
 		context.temp_allocator,
 	)
 	defer delete(stdout, context.temp_allocator)
 	defer delete(stderr, context.temp_allocator)
-	if len(stdout) > 0 do fmt.print(string(stdout))
-	if len(stderr) > 0 do fmt.eprint(string(stderr))
+	if len(stdout) > 0 { fmt.print(string(stdout)) }
+	if len(stderr) > 0 { fmt.eprint(string(stderr)) }
 	if err != nil {
 		fmt.eprintln("hot_reload: could not start build command:", err)
 		return false
@@ -128,7 +130,7 @@ run_build_command :: proc(command: []string) -> bool {
 // elapsed. Returns true after a successful build, for frame-boundary module
 // activation by the host.
 dev_reload_tick :: proc(r: ^Dev_Reloader) -> bool {
-	if r == nil do return false
+	if r == nil { return false }
 	now := time.tick_now()
 	if !r.config.initialized {
 		r.config.last_fingerprint = scan_sources(r.config.source_roots)

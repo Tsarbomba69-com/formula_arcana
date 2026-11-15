@@ -106,7 +106,10 @@ cmd_run() {
 }
 
 cmd_test() {
-    echo "[odin] Running project tests..."
+    echo "[odin] Running core tests..."
+    odin test "${SRC_DIR}/core" ${VET_FLAGS}
+
+    echo "[odin] Running feature tests..."
     odin test "${SRC_DIR}/features" ${VET_FLAGS}
 }
 
