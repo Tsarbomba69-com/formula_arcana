@@ -6,5 +6,6 @@
 * [x] Hot-reloading. [MEDIUM]
 * [x] Add new UI font. [MEDIUM]
 * [x] Add border rendering. [MEDIUM]
-* [ ] Plan formula transformation feature [HIGH]
+* [x] Plan formula transformation feature [HIGH]
+* [ ] Improve formula selection UI [HIGH]
 * [ ] Construct UI by asset file (json, plaintext, etc). [LOW]

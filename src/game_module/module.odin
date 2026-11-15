@@ -151,6 +151,7 @@ game_initialize :: proc "c" (
 			case 3: navigation = core.Go_Settings {
 						tab = .Audio,
 					}
+			case 4: navigation = core.Go_Gameplay{}
 			}
 		}
 	}
@@ -225,6 +226,7 @@ game_snapshot :: proc "c" (
 	case features.Level_Select_State: words[1] = 1
 	case features.Archives_State: words[1] = 2
 	case features.Settings_State: words[1] = 3
+	case features.Gameplay_State: words[1] = 4
 	case: words[1] = 0
 	}
 	return 1

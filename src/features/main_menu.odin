@@ -58,7 +58,7 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		background, ok = ctx.load_texture(background_path)
 	}
 	// Load at 64px base size so the 64px title and smaller UI elements both render cleanly
-	ui_font_path: cstring = "assets/fonts/ChakraPetch-SemiBold.ttf"
+	ui_font_path: cstring = "assets/fonts/latinmodern-math.ttf"
 	ui_font: shared.Font_Id
 	ok_font := false
 	has_font_loader := ctx.load_font != nil
@@ -77,7 +77,7 @@ init_menu :: proc(ctx: ^Context) -> (state: Menu_State) {
 		t,
 		core.Text {
 			content = "FORMULA",
-			font_size = 64,
+			font_size = 60,
 			color = WHITE,
 			is_bold = true,
 			font = ui_font,

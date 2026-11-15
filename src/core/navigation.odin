@@ -20,6 +20,7 @@ Go_Main_Menu :: struct {}
 Go_Level_Select :: struct {
 	difficulty: Difficulty,
 }
+Go_Gameplay :: struct {}
 Go_Archives :: struct {}
 Go_Settings :: struct {
 	tab: Settings_Tab,
@@ -28,6 +29,7 @@ Go_Settings :: struct {
 Navigation :: union {
 	Go_Main_Menu,
 	Go_Level_Select,
+	Go_Gameplay,
 	Go_Archives,
 	Go_Settings,
 }
