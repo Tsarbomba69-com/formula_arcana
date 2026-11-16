@@ -14,7 +14,7 @@ ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: shared.Renderer, s
 	n := &t.nodes[i]
 	rect := shared.Rect{n.rect.x * scale, n.rect.y * scale, n.rect.w * scale, n.rect.h * scale}
 	#partial switch n.background.type {
-	case .Color: panic("Background not implemented for 'Color' type")
+	case .Color: r.fill_rect(rect, n.background.color)
 	case .Image: // Draw background texture scaled to the node's rect
 			r.draw_texture(n.background.texture_id, rect, {255, 255, 255, 255})
 	}

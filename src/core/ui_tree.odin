@@ -4,7 +4,7 @@ import "../shared"
 // Generic widget tree + layout. Knows NOTHING about screens or game messages:
 // a button just carries an `action` id, and the owning feature decides what it means.
 // The whole tree is value-typed: fixed array, children by index, copy-safe.
-UI_MAX_NODES :: 16
+UI_MAX_NODES :: 40
 UI_MAX_CHILDREN :: 8
 UI_MAX_LINES :: 4
 DEFAULT_LINE_HEIGHT_SCALE :: 1.0
@@ -54,6 +54,7 @@ Button :: struct {
 	label:         string,
 	action:        int, // opaque id; the owning feature maps it to behaviour
 	width:         f32, // 0 == fit content
+	height:        f32, // 0 == default button height
 	font:          shared.Font_Id,
 	normal_color:  shared.Color,
 	hover_color:   shared.Color,
@@ -254,7 +255,9 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: shared.Measure_Text) -> shared.
 	case Button:
 		w := measure(k.label, BUTTON_FONT_SIZE, k.font) + k.padding.left + k.padding.right
 		if k.width > 0 { w = k.width }
-		size = {w, f32(BUTTON_FONT_SIZE) + k.padding.top + k.padding.bottom}
+		h := f32(BUTTON_FONT_SIZE) + k.padding.top + k.padding.bottom
+		if k.height > 0 { h = k.height }
+		size = {w, h}
 	case Container:
 		main_axis, cross_axis: f32
 		for c in n.children[:n.child_count] {

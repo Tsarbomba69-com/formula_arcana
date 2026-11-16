@@ -7,7 +7,7 @@ package core
 
 Difficulty :: enum {
 	Easy,
-	Standard,
+	Normal,
 	Hard,
 }
 

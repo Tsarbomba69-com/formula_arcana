@@ -171,7 +171,7 @@ init_gameplay :: proc(puzzle: Puzzle) -> Gameplay_State {
 update_gameplay :: proc(events: []core.Event) -> core.Navigation {
 	for event in events {
 		if key, ok := event.(shared.Key_Input); ok && key.key == .Back {
-			return core.Go_Level_Select{difficulty = .Standard}
+			return core.Go_Level_Select{difficulty = .Normal}
 		}
 	}
 	return nil

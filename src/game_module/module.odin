@@ -145,7 +145,7 @@ game_initialize :: proc "c" (
 		if words[0] == MODULE_STATE_VERSION {
 			switch words[1] {
 			case 1: navigation = core.Go_Level_Select {
-						difficulty = .Standard,
+						difficulty = .Normal,
 					}
 			case 2: navigation = core.Go_Archives{}
 			case 3: navigation = core.Go_Settings {

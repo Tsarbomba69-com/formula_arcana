@@ -234,7 +234,7 @@ menu_navigate :: proc(t: ^core.UI_Tree, node: int) -> core.Navigation {
 	if !ok { return nil }
 
 	switch Menu_Action(button.action) {
-	case .Enter_Codex: return core.Go_Level_Select{difficulty = .Standard}
+	case .Enter_Codex: return core.Go_Level_Select{difficulty = .Normal}
 	case .Archives: return core.Go_Archives{}
 	case .Settings: return core.Go_Settings{tab = .Audio}
 	}
@@ -243,8 +243,4 @@ menu_navigate :: proc(t: ^core.UI_Tree, node: int) -> core.Navigation {
 
 draw_menu :: proc(state: ^Menu_State, r: shared.Renderer) {
 	core.ui_draw(&state.tree, state.ix, r, state.viewport.scale)
-}
-
-load_font :: proc(text: ^core.Text, font_path: string) {
-
 }

@@ -7,5 +7,6 @@
 * [x] Add new UI font. [MEDIUM]
 * [x] Add border rendering. [MEDIUM]
 * [x] Plan formula transformation feature [HIGH]
-* [ ] Improve formula selection UI [HIGH]
+* [x] Improve formula selection UI [HIGH]
+* [x] Fix special char text rendering [HIGH]
 * [ ] Construct UI by asset file (json, plaintext, etc). [LOW]
