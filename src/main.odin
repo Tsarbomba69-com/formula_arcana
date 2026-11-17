@@ -157,6 +157,8 @@ collect_events :: proc(app: ^Game) -> []hot_reload.Hot_Event {
 			case .Right: key = hot_reload.KEY_RIGHT
 			case .Confirm: key = hot_reload.KEY_CONFIRM
 			case .Back: key = hot_reload.KEY_BACK
+			case .Undo: key = hot_reload.KEY_UNDO
+			case .Pause: key = hot_reload.KEY_PAUSE
 			}
 			append(&result, hot_reload.Hot_Event{kind = hot_reload.EVENT_KEY_INPUT, key = key})
 		}

@@ -29,6 +29,9 @@ KEY_LEFT :: 3
 KEY_RIGHT :: 4
 KEY_CONFIRM :: 5
 KEY_BACK :: 6
+KEY_UNDO :: 7
+KEY_PAUSE :: 8
+
 
 // A flat, ABI-safe representation of the current application's events.
 //

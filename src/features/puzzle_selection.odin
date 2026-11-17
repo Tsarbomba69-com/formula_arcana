@@ -175,7 +175,7 @@ update_puzzle_select :: proc(state: ^Level_Select_State, events: []core.Event) -
 	}
 	for event in events {
 		#partial switch input in event {
-		case shared.Key_Input: switch input.key {
+		case shared.Key_Input: #partial switch input.key {
 				case .Up: if state.ix.focus == state.back_node {
 							state.selected = len(PUZZLES) - 1
 							state.ix.focus = state.puzzle_nodes[state.selected]
@@ -239,7 +239,7 @@ update_puzzle_select_uninitialized :: proc(
 ) -> core.Navigation {
 	for event in events {
 		#partial switch input in event {
-		case shared.Key_Input: switch input.key {
+		case shared.Key_Input: #partial switch input.key {
 				case .Up:
 					state.selected =
 							(state.selected + len(PUZZLES) - PUZZLE_COLUMNS) % len(PUZZLES)

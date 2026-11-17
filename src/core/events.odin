@@ -11,6 +11,7 @@ Event :: union {
 	Window_Resized,
 	shared.Mouse_Input,
 	shared.Key_Input,
+	shared.Tick_Input,
 }
 
 CAPACITY :: 256

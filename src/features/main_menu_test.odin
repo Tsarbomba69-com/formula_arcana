@@ -19,14 +19,24 @@ button_center :: proc(m: ^Menu_State, which: int) -> shared.Vec2 {
 	return {r.x + r.w / 2, r.y + r.h / 2}
 }
 
+// ============================================================================
+// Feature: presenting and navigating the main menu
+// ============================================================================
+
 @(test)
-buttons_share_width_and_center :: proc(t: ^testing.T) {
+given_the_main_menu_opens_when_its_buttons_are_laid_out_then_they_share_width_and_center :: proc(
+	t: ^testing.T,
+) {
+	// Given: the main menu is open.
 	ctx := test_ctx()
 	m := init_menu(&ctx)
 	list, count := core.ui_buttons(&m.tree)
+
+	// When: the menu lays out its buttons.
 	testing.expect_value(t, count, 3)
 
 	first := m.tree.nodes[list[0]].rect
+	// Then: every button has the same width and center line.
 	for i in 0 ..< count {
 		r := m.tree.nodes[list[i]].rect
 		testing.expect_value(t, r.w, f32(BUTTON_WIDTH))
@@ -35,9 +45,15 @@ buttons_share_width_and_center :: proc(t: ^testing.T) {
 }
 
 @(test)
-tagline_wraps_to_two_lines :: proc(t: ^testing.T) {
+given_the_menu_tagline_is_long_when_the_menu_opens_then_it_wraps_to_two_lines :: proc(
+	t: ^testing.T,
+) {
+	// Given: the main menu is open.
 	ctx := test_ctx()
 	m := init_menu(&ctx)
+
+	// When: the tagline is laid out.
+	// Then: its constrained text node uses two lines.
 	for i in 0 ..< m.tree.count {
 		if txt, ok := m.tree.nodes[i].kind.(core.Text); ok && txt.max_width > 0 {
 			testing.expect_value(t, txt.line_count, 2)
@@ -46,61 +62,78 @@ tagline_wraps_to_two_lines :: proc(t: ^testing.T) {
 }
 
 @(test)
-click_fires_on_release_not_press :: proc(t: ^testing.T) {
+given_a_menu_button_is_pressed_when_it_is_released_then_navigation_fires :: proc(t: ^testing.T) {
+	// Given: a pointer is over the first menu button.
 	ctx := test_ctx()
 	m := init_menu(&ctx)
 	pos := button_center(&m, 0) // scale == 1 at 1440x900
 
+	// When: the user presses, then releases the button.
 	nav := update_menu(&m, {shared.Mouse_Input{position = pos, pressed = true}})
 	testing.expect(t, nav == nil, "press alone must not navigate")
 
 	nav = update_menu(&m, {shared.Mouse_Input{position = pos, released = true}})
 	_, is_level_select := nav.(core.Go_Level_Select)
+	// Then: navigation is requested only on release.
 	testing.expect(t, is_level_select, "release on same button navigates")
 }
 
 @(test)
-release_elsewhere_cancels :: proc(t: ^testing.T) {
+given_a_menu_button_is_pressed_when_released_over_another_then_navigation_is_cancelled :: proc(
+	t: ^testing.T,
+) {
+	// Given: the first button is pressed.
 	ctx := test_ctx()
 	m := init_menu(&ctx)
 	update_menu(&m, {shared.Mouse_Input{position = button_center(&m, 0), pressed = true}})
+	// When: the pointer is released over a different button.
 	nav := update_menu(&m, {shared.Mouse_Input{position = button_center(&m, 1), released = true}})
+	// Then: no navigation occurs and the pressed state is cleared.
 	testing.expect(t, nav == nil)
 	testing.expect(t, m.ix.pressed == nil)
 }
 
 @(test)
-keyboard_focus_and_confirm :: proc(t: ^testing.T) {
+given_menu_focus_is_on_the_first_button_when_down_and_confirm_are_pressed_then_archives_opens :: proc(
+	t: ^testing.T,
+) {
+	// Given: the menu has its default focus.
 	ctx := test_ctx()
 	m := init_menu(&ctx)
+	// When: focus moves down and the selection is confirmed.
 	update_menu(&m, {shared.Key_Input{.Down}})
 	nav := update_menu(&m, {shared.Key_Input{.Confirm}})
 	_, is_archives := nav.(core.Go_Archives)
+	// Then: Archives navigation is requested.
 	testing.expect(t, is_archives)
 }
 
 @(test)
-mouse_uses_scale :: proc(t: ^testing.T) {
-	// Arrange
+given_the_window_is_half_size_when_a_menu_button_is_clicked_then_scaled_coordinates_activate_it :: proc(
+	t: ^testing.T,
+) {
+	// Given: the menu is open in a half-size viewport.
 	ctx := test_ctx()
 	ctx.viewport = shared.viewport_of(720, 450) // scale 0.5
 	m := init_menu(&ctx)
 	real_pos := button_center(&m, 2) * ctx.viewport.scale
-	// Act
+	// When: the user clicks the third button using window coordinates.
 	update_menu(&m, {shared.Mouse_Input{position = real_pos, pressed = true}})
 	nav := update_menu(&m, {shared.Mouse_Input{position = real_pos, released = true}})
 	_, is_settings := nav.(core.Go_Settings)
-	// Assert
+	// Then: Settings navigation is requested.
 	testing.expect(t, is_settings)
 }
 
 @(test)
-background_defaults_to_none :: proc(t: ^testing.T) {
-	// Arrange
+given_the_main_menu_opens_when_its_nodes_are_created_then_backgrounds_default_to_none :: proc(
+	t: ^testing.T,
+) {
+	// Given: the main menu is open.
 	ctx := test_ctx()
 	m := init_menu(&ctx)
 
-	// Act & Assert
+	// Then: no node has a background unless one is explicitly assigned.
 	for i in 0 ..< m.tree.count {
 		node := m.tree.nodes[i]
 		testing.expect_value(t, node.background.type, core.UI_Background_Type.None)
@@ -108,8 +141,10 @@ background_defaults_to_none :: proc(t: ^testing.T) {
 }
 
 @(test)
-widget_accepts_background_image :: proc(t: ^testing.T) {
-	// Arrange
+given_a_menu_widget_when_a_background_image_is_assigned_then_it_stores_the_texture :: proc(
+	t: ^testing.T,
+) {
+	// Given: the main menu is open and has at least one button.
 	ctx := test_ctx()
 	m := init_menu(&ctx)
 	list, count := core.ui_buttons(&m.tree)
@@ -118,10 +153,10 @@ widget_accepts_background_image :: proc(t: ^testing.T) {
 	btn_idx := list[0]
 	test_texture := shared.Texture_Id(101)
 
-	// Act
+	// When: a texture is assigned as the first button's background.
 	core.set_node_background_image(&m.tree, btn_idx, test_texture)
 
-	// Assert
+	// Then: the button stores the image background and texture identifier.
 	node := m.tree.nodes[btn_idx]
 	testing.expect_value(t, node.background.type, core.UI_Background_Type.Image)
 	testing.expect_value(t, node.background.texture_id, test_texture)

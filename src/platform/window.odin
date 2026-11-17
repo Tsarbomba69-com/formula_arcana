@@ -39,4 +39,6 @@ poll_events :: proc(ch: ^core.Event_Channel) {
 			core.Window_Resized{width = rl.GetScreenWidth(), height = rl.GetScreenHeight()},
 		)
 	}
+
+	core.publish(ch, shared.Tick_Input{dt = rl.GetFrameTime()})
 }

@@ -39,10 +39,17 @@ Nav_Key :: enum {
 	Right,
 	Confirm,
 	Back,
+	Undo, // Ctrl+Z / Backspace
+	Pause, // Space / P
 }
 
 Key_Input :: struct {
 	key: Nav_Key,
+}
+
+// Frame time, delivered through the event stream like everything else.
+Tick_Input :: struct {
+	dt: f32, // seconds
 }
 
 // Texture_Id uniquely identifies a loaded GPU texture asset.

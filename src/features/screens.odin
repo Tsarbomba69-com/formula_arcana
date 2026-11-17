@@ -55,7 +55,7 @@ enter :: proc(nav: core.Navigation, ctx: ^Context) -> Screen_State {
 	case core.Go_Level_Select: return init_puzzle_select(ctx, n.difficulty)
 	case core.Go_Gameplay:
 		if n.puzzle_index >= 0 && n.puzzle_index < len(PUZZLES) {
-			return init_gameplay(PUZZLES[n.puzzle_index])
+			return init_gameplay(ctx, PUZZLES[n.puzzle_index], run_info_for(ctx.progress))
 		}
 		return nil
 	case core.Go_Archives: return Archives_State{}
@@ -74,7 +74,7 @@ update_screen :: proc(s: ^Screen_State, events: []core.Event) -> core.Navigation
 	switch &v in s^ {
 	case Menu_State: return update_menu(&v, events)
 	case Level_Select_State: return update_puzzle_select(&v, events)
-	case Gameplay_State: return update_gameplay(events)
+	case Gameplay_State: return update_gameplay(&v, events)
 	case Settings_State: return back_to_menu(events)
 	case Archives_State: return back_to_menu(events)
 	case nil: return nil
@@ -95,7 +95,7 @@ draw_screen :: proc(s: ^Screen_State, ctx: Context) {
 	case Level_Select_State: draw_puzzle_select(&v, ctx)
 	case Settings_State: draw_placeholder(ctx, "SETTINGS")
 	case Archives_State: draw_placeholder(ctx, "ARCHIVES")
-	case Gameplay_State: draw_gameplay(v, ctx)
+	case Gameplay_State: draw_gameplay(&v, ctx)
 	case nil:
 	}
 }

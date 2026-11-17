@@ -2,21 +2,42 @@ package features
 
 import "../core"
 import "../shared"
+import "core:log"
 
-// Gameplay_State owns the current proof history for the active puzzle.
-Gameplay_State :: struct {
-	puzzle:        Puzzle,
-	history:       [16]string,
-	history_count: int,
+// ============================================================================
+// PHASE 1 CONTRACT — the "Transformation" gameplay screen.
+// Replaces the old Gameplay_State / init_gameplay / update_gameplay /
+// draw_gameplay in gameplay.odin (see PATCH.md). Stubs on purpose (RED).
+//
+// Shape follows Level_Select_State: the state OWNS a value-typed UI tree and
+// the node indices that tests/handlers need. The domain lives in
+// algebra.Workspace; this layer only maps events → workspace calls → tree.
+// ============================================================================
+
+// Button `action` ids used by the gameplay tree.
+Gameplay_Action :: enum int {
+	None,
+	Move_Card, // + card index in the node lookup
+	Term_Tile,
+	Apply,
+	Undo,
+	Restart,
+	Pause,
 }
 
 // Puzzle contains the goal and transformations permitted for one proof task.
 Puzzle :: struct {
-	title:                string,
-	goal:                 string,
-	rating:               int, // 1..3 stars
+	title, goal:          string,
+	rating:               int,
 	available_transforms: [2]string,
 	transform_count:      int,
+	// Transformation screen
+	brief:                string, // "Preserve equivalence. …"
+	category:             string, // "ALGEBRA"
+	start:                string, // "3(x − 4) + 8 = 2x + 17"   (goal = "x = 21")
+	objective:            string, // "ISOLATE THE UNKNOWN"
+	rule:                 string, // "One variable. One value. No extra terms."
+	completion_rule:      string, // text under "COMPLETION RULE" (cut off in the screenshot)
 }
 
 PUZZLES: [20]Puzzle = {
@@ -164,50 +185,84 @@ PUZZLES: [20]Puzzle = {
 
 FIRST_PUZZLE: Puzzle = PUZZLES[0]
 
-init_gameplay :: proc(puzzle: Puzzle) -> Gameplay_State {
-	return {puzzle = puzzle}
+Gameplay_State :: struct {
+	puzzle:          Puzzle,
+	run:             Run_Info,
+	workspace:       Workspace,
+	elapsed:         f32, // seconds; frozen while paused or solved
+	paused:          bool,
+	viewport:        shared.Viewport,
+	tree:            core.UI_Tree,
+	ix:              core.Interaction,
+	font:            shared.Font_Id,
+
+	// Interactive nodes (rebuilt together with the tree after every state change).
+	move_nodes:      [MAX_MOVES]int,
+	move_node_count: int,
+	tile_nodes:      [MAX_TOKENS]int, // index == token index
+	tile_node_count: int,
+	apply_node:      int,
+	undo_node:       int,
+	restart_node:    int,
+	pause_node:      int,
 }
 
-update_gameplay :: proc(events: []core.Event) -> core.Navigation {
-	for event in events {
-		if key, ok := event.(shared.Key_Input); ok && key.key == .Back {
-			return core.Go_Level_Select{difficulty = .Normal}
-		}
-	}
-	return nil
+// Seam for Phase 2: where Run_Info comes from (campaign/progress).
+run_info_for :: proc(progress: core.Progress) -> Run_Info {
+	return {} // STUB
 }
 
-draw_gameplay :: proc(state: Gameplay_State, ctx: Context) {
-	scale := ctx.viewport.scale
-	color := shared.Color{230, 235, 240, 255}
-	y := f32(72)
-	draw := ctx.renderer.draw_text
-	draw("PROOF WORKSPACE", {72 * scale, y * scale}, i32(32 * scale), color)
-	y += 58
-	draw(state.puzzle.title, {72 * scale, y * scale}, i32(24 * scale), {100, 220, 190, 255})
-	y += 54
-	draw("GOAL", {72 * scale, y * scale}, i32(18 * scale), {145, 165, 180, 255})
-	y += 34
-	draw(state.puzzle.goal, {72 * scale, y * scale}, i32(30 * scale), color)
-	y += 78
-	draw("AVAILABLE TRANSFORMS", {72 * scale, y * scale}, i32(18 * scale), {145, 165, 180, 255})
-	y += 34
-	for index in 0 ..< state.puzzle.transform_count {
-		transform := state.puzzle.available_transforms[index]
-		draw(transform, {92 * scale, y * scale}, i32(20 * scale), color)
-		y += 32
-	}
-	y += 28
-	draw("PROOF HISTORY", {72 * scale, y * scale}, i32(18 * scale), {145, 165, 180, 255})
-	y += 34
-	if state.history_count == 0 {
-		draw("No steps yet", {92 * scale, y * scale}, i32(20 * scale), color)
+init_gameplay :: proc(ctx: ^Context, puzzle: Puzzle, run: Run_Info) -> (state: Gameplay_State) {
+	state.puzzle = puzzle
+	state.run = run
+
+	workspace, err := workspace_init(puzzle.start, puzzle.goal)
+	if err == .None {
+		state.workspace = workspace
 	} else {
-		for index in 0 ..< state.history_count {
-			step := state.history[index]
-			draw(step, {92 * scale, y * scale}, i32(20 * scale), color)
-			y += 32
-		}
+		log.errorf("Puzzle %q cannot start: %v", puzzle.title, err)
 	}
-	draw("Esc: puzzle select", {72 * scale, 850 * scale}, i32(16 * scale), {145, 165, 180, 255})
+	// TODO: Make init gameplay work
+	// state.fonts.ui = gp_load_font(ctx, GP_FONT_UI_PATH, shared.INVALID_FONT_ID)
+	// state.fonts.display = gp_load_font(ctx, GP_FONT_DISPLAY_PATH, state.fonts.ui)
+	// state.fonts.mono = gp_load_font(ctx, GP_FONT_MONO_PATH, state.fonts.ui)
+	// state.fonts.math = gp_load_font(ctx, GP_FONT_MATH_PATH, state.fonts.ui)
+	// state.fonts.math_italic = gp_load_font(ctx, GP_FONT_MATH_ITALIC_PATH, state.fonts.math)
+	// if ctx.load_texture != nil {
+	// 	if texture, ok := ctx.load_texture(GP_BACKGROUND_PATH); ok { state.background = texture }
+	// }
+
+	layout_gameplay(&state, ctx)
+	state.ix.focus = state.apply_node
+	return
+}
+
+// Rebuilds tree + node indices from state. Called on init, resize and after every change.
+layout_gameplay :: proc(s: ^Gameplay_State, ctx: ^Context) {
+	// STUB
+}
+
+// Events handled (all through the event stream, like the other screens):
+//   Key_Input .Up/.Down   → step selected move (wraps)         [preview only]
+//   Key_Input .Confirm    → apply selected move
+//   Key_Input .Undo       → undo last move
+//   Key_Input .Pause      → toggle pause
+//   Key_Input .Back       → Go_Level_Select{difficulty = .Normal}
+//   Mouse_Input press+release on the SAME button → that button's action
+//   Tick_Input{dt}        → advance the clock (unless paused / solved)
+update_gameplay :: proc(s: ^Gameplay_State, events: []core.Event) -> core.Navigation {
+	return nil // STUB
+}
+
+draw_gameplay :: proc(s: ^Gameplay_State, ctx: Context) {
+	// STUB
+}
+
+@(private = "file")
+gp_load_font :: proc(ctx: ^Context, path: cstring, fallback: shared.Font_Id) -> shared.Font_Id {
+	if ctx.load_font == nil { return fallback }
+	id, ok := ctx.load_font(path, 64)
+	if ok && id != shared.INVALID_FONT_ID { return id }
+	log.infof("Font %s unavailable, using fallback", path)
+	return fallback
 }
