@@ -25,8 +25,10 @@ EVENT_FLAG_RELEASED :: 1 << 1
 // Navigation key values. These are ABI values, not core.Nav_Key values.
 KEY_UP :: 1
 KEY_DOWN :: 2
-KEY_CONFIRM :: 3
-KEY_BACK :: 4
+KEY_LEFT :: 3
+KEY_RIGHT :: 4
+KEY_CONFIRM :: 5
+KEY_BACK :: 6
 
 // A flat, ABI-safe representation of the current application's events.
 //

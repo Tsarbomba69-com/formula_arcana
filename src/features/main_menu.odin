@@ -219,6 +219,8 @@ update_menu :: proc(state: ^Menu_State, events: []core.Event) -> core.Navigation
 		case shared.Key_Input: switch e.key {
 				case .Up: core.ui_focus_step(t, &state.ix, -1)
 				case .Down: core.ui_focus_step(t, &state.ix, +1)
+				case .Left: core.ui_focus_step(t, &state.ix, -1)
+				case .Right: core.ui_focus_step(t, &state.ix, +1)
 				case .Confirm: nav = menu_navigate(t, state.ix.focus)
 				case .Back:
 				}

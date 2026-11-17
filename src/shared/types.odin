@@ -35,6 +35,8 @@ Mouse_Input :: struct {
 Nav_Key :: enum {
 	Up,
 	Down,
+	Left,
+	Right,
 	Confirm,
 	Back,
 }

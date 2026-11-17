@@ -1,8 +1,8 @@
 package features
 
-import "core:log"
 import "../core"
 import "../shared"
+import "core:log"
 
 PUZZLE_COLUMNS :: 4
 PUZZLE_CARD_W :: f32(246)
@@ -190,6 +190,12 @@ update_puzzle_select :: proc(state: ^Level_Select_State, events: []core.Event) -
 							state.selected = (state.selected + PUZZLE_COLUMNS) % len(PUZZLES)
 							state.ix.focus = state.puzzle_nodes[state.selected]
 						}
+				case .Left:
+					state.selected = (state.selected + len(PUZZLES) - 1) % len(PUZZLES)
+					state.ix.focus = state.puzzle_nodes[state.selected]
+				case .Right:
+					state.selected = (state.selected + 1) % len(PUZZLES)
+					state.ix.focus = state.puzzle_nodes[state.selected]
 				case .Confirm: if button, ok := t.nodes[state.ix.focus].kind.(core.Button); ok {
 							return puzzle_select_navigate(button.action)
 						}
@@ -238,6 +244,8 @@ update_puzzle_select_uninitialized :: proc(
 					state.selected =
 							(state.selected + len(PUZZLES) - PUZZLE_COLUMNS) % len(PUZZLES)
 				case .Down: state.selected = (state.selected + PUZZLE_COLUMNS) % len(PUZZLES)
+				case .Left: state.selected = (state.selected + len(PUZZLES) - 1) % len(PUZZLES)
+				case .Right: state.selected = (state.selected + 1) % len(PUZZLES)
 				case .Confirm: return core.Go_Gameplay{puzzle_index = state.selected}
 				case .Back: return core.Go_Main_Menu{}
 				}

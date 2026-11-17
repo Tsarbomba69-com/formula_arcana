@@ -188,6 +188,8 @@ game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count
 			switch event.key {
 			case hot_reload.KEY_UP: key = .Up
 			case hot_reload.KEY_DOWN: key = .Down
+			case hot_reload.KEY_LEFT: key = .Left
+			case hot_reload.KEY_RIGHT: key = .Right
 			case hot_reload.KEY_CONFIRM: key = .Confirm
 			case hot_reload.KEY_BACK: key = .Back
 			}

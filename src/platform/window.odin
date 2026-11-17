@@ -26,6 +26,9 @@ poll_events :: proc(ch: ^core.Event_Channel) {
 
 	if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.W) { core.publish(ch, shared.Key_Input{.Up}) }
 	if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.S) { core.publish(ch, shared.Key_Input{.Down}) }
+	if rl.IsKeyPressed(.LEFT) || rl.IsKeyPressed(.A) { core.publish(ch, shared.Key_Input{.Left}) }
+	if rl.IsKeyPressed(.RIGHT) ||
+	   rl.IsKeyPressed(.D) { core.publish(ch, shared.Key_Input{.Right}) }
 	if rl.IsKeyPressed(.ENTER) ||
 	   rl.IsKeyPressed(.SPACE) { core.publish(ch, shared.Key_Input{.Confirm}) }
 	if rl.IsKeyPressed(.ESCAPE) { core.publish(ch, shared.Key_Input{.Back}) }

@@ -153,6 +153,8 @@ collect_events :: proc(app: ^Game) -> []hot_reload.Hot_Event {
 			switch e.key {
 			case .Up: key = hot_reload.KEY_UP
 			case .Down: key = hot_reload.KEY_DOWN
+			case .Left: key = hot_reload.KEY_LEFT
+			case .Right: key = hot_reload.KEY_RIGHT
 			case .Confirm: key = hot_reload.KEY_CONFIRM
 			case .Back: key = hot_reload.KEY_BACK
 			}
