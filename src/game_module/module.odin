@@ -198,7 +198,14 @@ game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count
 			   navigation != nil {
 				state.screen = features.enter(navigation, &state.ctx)
 			}
+		case hot_reload.EVENT_TICK_INPUT:
+			core_events := []core.Event{shared.Tick_Input{event.dt}}
+			if navigation := features.update_screen(&state.screen, core_events);
+			   navigation != nil {
+				state.screen = features.enter(navigation, &state.ctx)
+			}
 		}
+
 	}
 }
 

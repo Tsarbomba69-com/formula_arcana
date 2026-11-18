@@ -95,7 +95,8 @@
             "presentation": {
                 "reveal": "silent",
                 "clear": true
-            }
+            },
+            "problemMatcher": []
         },
         {
             "label": "odin: clean",

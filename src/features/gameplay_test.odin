@@ -143,116 +143,116 @@ gp_expect_all :: proc(t: ^testing.T, wants: []string, loc := #caller_location) {
 // Feature: opening the screen
 // ============================================================================
 
-// @(test)
-// given_a_run_when_gameplay_opens_then_the_top_bar_shows_mode_round_score_streak_and_time :: proc(
-// 	t: ^testing.T,
-// ) {
-// 	ctx := gp_context()
-// 	state := gp_open(t, &ctx)
+@(test)
+given_a_run_when_gameplay_opens_then_the_top_bar_shows_mode_round_score_streak_and_time :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
 
-// 	gp_draw(&state, ctx)
+	gp_draw(&state, ctx)
 
-// 	gp_expect_all(t, {"ARCANE TRIALS / ADEPT", "ROUND 07 / 10", "70%", "04,280", "× 6", "00:00"})
-// 	gp_expect_all(t, {"SCORE", "STREAK", "TIME"})
-// }
+	gp_expect_all(t, {"ARCANE TRIALS / ADEPT", "ROUND 07 / 10", "70%", "04,280", "× 6", "00:00"})
+	gp_expect_all(t, {"SCORE", "STREAK", "TIME"})
+}
 
-// @(test)
-// given_a_puzzle_when_gameplay_opens_then_title_brief_and_category_tabs_are_shown :: proc(
-// 	t: ^testing.T,
-// ) {
-// 	ctx := gp_context()
-// 	state := gp_open(t, &ctx)
+@(test)
+given_a_puzzle_when_gameplay_opens_then_title_brief_and_category_tabs_are_shown :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
 
-// 	gp_draw(&state, ctx)
+	gp_draw(&state, ctx)
 
-// 	gp_expect_all(
-// 		t,
-// 		{
-// 			"THE ART OF ISOLATION",
-// 			"Preserve equivalence. Transform the formula into its final form.",
-// 		},
-// 	)
-// 	testing.expect(
-// 		t,
-// 		gp_has_in_order({"ALGEBRA", "ARITHMETIC", "LOGIC", "PHYSICS"}),
-// 		"the four category tabs should appear in design order",
-// 	)
-// }
+	gp_expect_all(
+		t,
+		{
+			"THE ART OF ISOLATION",
+			"Preserve equivalence. Transform the formula into its final form.",
+		},
+	)
+	testing.expect(
+		t,
+		gp_has_in_order({"ALGEBRA", "ARITHMETIC", "LOGIC", "PHYSICS"}),
+		"the four category tabs should appear in design order",
+	)
+}
 
-// @(test)
-// given_the_start_formula_when_gameplay_opens_then_the_panels_show_the_initial_state :: proc(
-// 	t: ^testing.T,
-// ) {
-// 	ctx := gp_context()
-// 	state := gp_open(t, &ctx)
+@(test)
+given_the_start_formula_when_gameplay_opens_then_the_panels_show_the_initial_state :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
 
-// 	gp_draw(&state, ctx)
+	gp_draw(&state, ctx)
 
-// 	gp_expect_all(
-// 		t,
-// 		{
-// 			"VALID TRANSFORMATIONS",
-// 			"1 valid move · whole equation",
-// 			"Distribute 3",
-// 			"CURRENT FORMULA",
-// 			"STEP 00",
-// 			"SCOPE: EQUATION",
-// 			"Select a term to inspect its valid transformations.",
-// 			"TRANSFORMATION HISTORY",
-// 			"Every step, preserved.",
-// 			"0 MOVES",
-// 			"Initial formula",
-// 			"STARTING STATE",
-// 			"Original equation from the codex.",
-// 			"APPLY TRANSFORM",
-// 			"UNDO LAST",
-// 			"RESTART",
-// 		},
-// 	)
-// 	testing.expect(
-// 		t,
-// 		gp_has_in_order({"3", "(", "x", "−", "4", ")", "+", "8", "=", "2", "x", "+", "17"}),
-// 		"formula tiles should read 3 ( x − 4 ) + 8 = 2 x + 17",
-// 	)
-// }
+	gp_expect_all(
+		t,
+		{
+			"VALID TRANSFORMATIONS",
+			"1 valid move · whole equation",
+			"Distribute 3",
+			"CURRENT FORMULA",
+			"STEP 00",
+			"SCOPE: EQUATION",
+			"Select a term to inspect its valid transformations.",
+			"TRANSFORMATION HISTORY",
+			"Every step, preserved.",
+			"0 MOVES",
+			"Initial formula",
+			"STARTING STATE",
+			"Original equation from the codex.",
+			"APPLY TRANSFORM",
+			"UNDO LAST",
+			"RESTART",
+		},
+	)
+	testing.expect(
+		t,
+		gp_has_in_order({"3", "(", "x", "−", "4", ")", "+", "8", "=", "2", "x", "+", "17"}),
+		"formula tiles should read 3 ( x − 4 ) + 8 = 2 x + 17",
+	)
+}
 
-// @(test)
-// given_a_puzzle_when_gameplay_opens_then_the_end_goal_card_shows_the_target :: proc(t: ^testing.T) {
-// 	ctx := gp_context()
-// 	state := gp_open(t, &ctx)
+@(test)
+given_a_puzzle_when_gameplay_opens_then_the_end_goal_card_shows_the_target :: proc(t: ^testing.T) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
 
-// 	gp_draw(&state, ctx)
+	gp_draw(&state, ctx)
 
-// 	gp_expect_all(
-// 		t,
-// 		{
-// 			"END GOAL",
-// 			"ISOLATE THE UNKNOWN",
-// 			"One variable. One value. No extra terms.",
-// 			"x = 21",
-// 			"TARGET STATE",
-// 			"COMPLETION RULE",
-// 			"x alone on the left, equal to a number.",
-// 		},
-// 	)
-// }
+	gp_expect_all(
+		t,
+		{
+			"END GOAL",
+			"ISOLATE THE UNKNOWN",
+			"One variable. One value. No extra terms.",
+			"x = 21",
+			"TARGET STATE",
+			"COMPLETION RULE",
+			"x alone on the left, equal to a number.",
+		},
+	)
+}
 
-// @(test)
-// given_gameplay_opens_when_laid_out_then_the_three_panels_sit_left_center_right :: proc(
-// 	t: ^testing.T,
-// ) {
-// 	ctx := gp_context()
-// 	state := gp_open(t, &ctx)
-// 	nodes := state.tree.nodes
+@(test)
+given_gameplay_opens_when_laid_out_then_the_three_panels_sit_left_center_right :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
+	nodes := state.tree.nodes
 
-// 	moves_x := nodes[state.move_nodes[0]].rect.x
-// 	apply := nodes[state.apply_node].rect
-// 	undo_x := nodes[state.undo_node].rect.x
+	moves_x := nodes[state.move_nodes[0]].rect.x
+	apply := nodes[state.apply_node].rect
+	undo_x := nodes[state.undo_node].rect.x
 
-// 	testing.expect(t, moves_x < apply.x, "move cards are left of the formula panel")
-// 	testing.expect(t, apply.x < undo_x, "history controls are right of the formula panel")
-// 	testing.expect(t, apply.x + apply.w <= 1440, "Apply stays inside the 1440 design width")
-// }
+	testing.expect(t, moves_x < apply.x, "move cards are left of the formula panel")
+	testing.expect(t, apply.x < undo_x, "history controls are right of the formula panel")
+	testing.expect(t, apply.x + apply.w <= 1440, "Apply stays inside the 1440 design width")
+}
 
 // // ============================================================================
 // // Feature: the reference screen (after Distribute 3 → Combine constants)

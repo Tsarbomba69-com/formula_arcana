@@ -17,6 +17,7 @@ ABI_VERSION :: 1
 EVENT_WINDOW_RESIZED :: 1
 EVENT_MOUSE_INPUT :: 2
 EVENT_KEY_INPUT :: 3
+EVENT_TICK_INPUT :: 4
 
 // Event flags.
 EVENT_FLAG_PRESSED :: 1 << 0
@@ -44,6 +45,7 @@ Hot_Event :: struct {
 	width:  i32,
 	height: i32,
 	key:    u32,
+	dt:     f32,
 }
 
 // A byte range used for opaque, versioned state snapshots.
