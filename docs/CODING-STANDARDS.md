@@ -173,6 +173,16 @@ Unit tests for domain logic define **invariants** (properties that must hold for
 - Combine example-based unit tests with table-driven tests and randomized input generators to verify structural invariants across ranges.
 - Pure procedures and value types (§4.2 structs) are the highest-value targets for invariant testing.
 
+### 9.1 Feature-first BDD with focused TDD
+
+Use **BDD for the outer loop** and **TDD for the inner loop**:
+
+1. Start with a user-visible feature and describe its expected behavior as scenarios: *given* a starting state, *when* an action occurs, *then* an observable result follows. Group related scenarios under a feature heading.
+2. For each scenario, identify the specific domain rule or procedure needed to make it pass. Write a focused failing test for that behavior, implement the smallest change that passes, then refactor while keeping the test green.
+3. Finish by running the feature scenarios together. Keep them at the public behavior boundary; test internal calculations and edge cases in smaller unit tests rather than making every scenario depend on implementation details.
+
+[gameplay_test.odin](../src/features/gameplay_test.odin) is the project example: its `Feature: ...` groups define the outer BDD loop (opening gameplay, clock and pause, solving, leaving, resizing), while each `given_..._when_..._then_...` scenario checks a concrete behavior through gameplay input and observable state or rendered output. When changing one of those features, use focused TDD tests for the underlying workspace or algebra rule, then keep the gameplay scenario as the end-to-end contract.
+
 Run test suites using:
 
 ```bash
@@ -206,7 +216,17 @@ odin build . -warnings-as-errors -vet-unused -vet-shadowing -vet-using-param -ve
 
 ---
 
-## 12. Quick Reference Checklist
+## 12. Data-Oriented Design Awareness
+
+Choose data structures and iteration patterns based on how the program uses data. Keep related data together when it is processed together, and make frequent operations easy to perform over predictable memory layouts.
+
+- Prefer simple value types and explicit collections over deep object graphs, especially in per-frame, per-entity, or other hot paths.
+- Organize collections around the operations they serve. Use contiguous slices or arrays for sequential processing; consider structure-of-arrays when systems repeatedly process only a few fields across many items. Use maps when lookup by key is the real access pattern.
+- Separate frequently accessed data from cold or optional data when doing so improves the measured workload or simplifies the common path. Avoid speculative layout complexity without evidence.
+- Keep systems focused on transforming input data into output data. Pass required data explicitly, and avoid hidden cross-system mutation or repeated lookups inside tight loops.
+- Measure before and after when making a performance-driven layout change. Preserve clear ownership, invariants, and tests; data-oriented design does not justify unsafe aliasing or opaque representations.
+
+## 13. Quick Reference Checklist
 
 - [ ] Package surface documented (§7) and passes `-warnings-as-errors` + `-vet` flags (§10)
 - [ ] SemVer bump matches actual contract change (§2)

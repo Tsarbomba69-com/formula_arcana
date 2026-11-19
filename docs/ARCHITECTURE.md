@@ -104,17 +104,61 @@ The current practical dependency boundaries are:
 - `hot_reload/api.odin` stays independent of game packages so the ABI remains explicit and small.
 
 ```mermaid
-flowchart LR
-    Main[main host] --> Platform[platform]
-    Main --> Reload[hot_reload loader]
-    Main --> Shared[shared contracts]
-    Module[game_module] --> ABI[hot_reload API]
-    Module --> Features[features]
-    Module --> Core[core]
-    Module --> Shared
-    Features --> Core
-    Features --> Shared
-    Platform --> Shared
+flowchart TB
+    %% Styling
+    classDef host fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    classDef boundary fill:#451a03,stroke:#f59e0b,stroke-width:2px,stroke-dasharray: 5 5,color:#fef3c7
+    classDef module fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc
+    classDef shared fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+
+    %% Top: Host Process Layer (Process Lifetime)
+    subgraph HostProcess ["HOST PROCESS (Process Lifetime — Persistent)"]
+        direction TB
+        Main["<b>src/main.odin</b><br/>Frame Loop, Event Translation, Host Services"]:::host
+        
+        subgraph HostSubsystems ["Host-Owned Subsystems"]
+            direction LR
+            Platform["<b>src/platform/</b><br/>Raylib Window, Renderer,<br/>Texture & Font Managers"]:::host
+            ReloadLoader["<b>src/hot_reload/</b> (Loader & Watcher)<br/>Dynamic Library Lifecycle, Source Polling"]:::host
+        end
+
+        Main --> Platform
+        Main --> ReloadLoader
+    end
+
+    %% Middle: C ABI Boundary
+    subgraph ABIBoundary ["C ABI BOUNDARY (Version 1 — Value/Pointer Contract)"]
+        direction LR
+        API["<b>src/hot_reload/api.odin</b><br/>game_module_api_v1 (init, update, draw, snapshot, shutdown)<br/>Host Callback Table & Flat Hot_Event Records"]:::boundary
+    end
+
+    %% Bottom: Reloadable Module Layer (Swappable)
+    subgraph GuestModule ["RELOADABLE GAME MODULE (Dynamic Library — Swappable)"]
+        direction TB
+        GameMod["<b>src/game_module/module.odin</b><br/>Module Lifecycle, Game_State, Snapshot Serialization"]:::module
+        Features["<b>src/features/</b><br/>Screens (Menu, Puzzle Select, Gameplay/Algebra Stubs)"]:::module
+        Core["<b>src/core/</b><br/>UI Tree/Layout, Bounded Event Channel, Navigation, Config"]:::module
+
+        GameMod --> Features
+        GameMod --> Core
+        Features --> Core
+    end
+
+    %% Foundation: Backend-Neutral Contracts
+    subgraph Foundation ["FOUNDATION LAYER (Backend-Neutral & Dependency-Free)"]
+        Shared["<b>src/shared/</b><br/>Renderer Procedure Table, Geometry, Input Values, Resource IDs"]:::shared
+    end
+
+    %% Cross-Boundary & Foundation Wiring
+    ReloadLoader <==>|"Loads / Snapshots / Swaps"| API
+    Main -.->|"Passes Host Callbacks & Events"| API
+    API <==>|"Implements & Invokes"| GameMod
+
+    Platform -->|"Implements"| Shared
+    Main -->|"Uses"| Shared
+    Core -->|"Uses"| Shared
+    Features -->|"Uses"| Shared
+    GameMod -->|"Adapts"| Shared
 ```
 
 ### Where should a change go?

@@ -86,6 +86,7 @@ resize_screen :: proc(s: ^Screen_State, ctx: ^Context) {
 	#partial switch &v in s^ {
 	case Menu_State: layout_menu(&v, ctx)
 	case Level_Select_State: layout_puzzle_select(&v, ctx)
+	case Gameplay_State: layout_gameplay(&v, ctx)
 	}
 }
 

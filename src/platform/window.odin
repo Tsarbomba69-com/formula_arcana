@@ -31,7 +31,7 @@ poll_events :: proc(ch: ^core.Event_Channel) {
 	   rl.IsKeyPressed(.D) { core.publish(ch, shared.Key_Input{.Right}) }
 	if rl.IsKeyPressed(.ENTER) ||
 	   rl.IsKeyPressed(.SPACE) { core.publish(ch, shared.Key_Input{.Confirm}) }
-	if rl.IsKeyPressed(.ESCAPE) { core.publish(ch, shared.Key_Input{.Back}) }
+	if rl.IsKeyPressed(.BACKSPACE) { core.publish(ch, shared.Key_Input{.Back}) }
 
 	if rl.IsWindowResized() {
 		core.publish(

@@ -1,0 +1,4 @@
+{
+  "odinTestExplorer.debuggerType": "cppdbg",
+  "odinTestExplorer.extraArgs": ["-show-timings"]
+}

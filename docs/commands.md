@@ -1,21 +1,29 @@
-# Git
+# Commands
 
-## Initialize repo
+## Git
+
+### Initialize repo
 
 ```bash
 git init
 ```
 
-## Unpack tarball
+### Unpack tarball
 
 ```bash
 tar -xf filename.tar.gz
 ```
 
-## Give github action script exec permission
+### Give github action script exec permission
 
 ```bash
 chmod +x build.sh
 git add --chmod=+x build.sh
 git commit -m "ci: mark build.sh as executable"
+```
+
+### Disable fast-forward merges
+
+```bash
+git merge --no-ff
 ```

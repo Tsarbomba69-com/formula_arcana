@@ -9,4 +9,6 @@
 * [x] Plan formula transformation feature [HIGH]
 * [x] Improve formula selection UI [HIGH]
 * [x] Fix special char text rendering [HIGH]
+* [ ] Add gameplay missing fonts [MEDIUM]
+* [ ] Render formula state [HIGH]
 * [ ] Construct UI by asset file (json, plaintext, etc). [LOW]

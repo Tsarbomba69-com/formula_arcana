@@ -44,11 +44,15 @@ Puzzle :: struct {
 
 PUZZLES: [20]Puzzle = {
 	{
-		title = "ADDITIVE IDENTITY",
-		goal = "x + 0 = x",
-		rating = 3,
-		available_transforms = {"Additive identity", "Reflexivity"},
-		transform_count = 2,
+		title           = "THE ART OF ISOLATION",
+		brief           = "Preserve equivalence. Transform the formula into its final form.",
+		category        = "ALGEBRA",
+		start           = "3(x − 4) + 8 = 2x + 17",
+		goal            = "x = 21",
+		objective       = "ISOLATE THE UNKNOWN",
+		rule            = "One variable. One value. No extra terms.",
+		// The reference screenshot cuts this copy off; placeholder until the design is confirmed.
+		completion_rule = "x alone on the left, equal to a number.",
 	},
 	{
 		title = "MULTIPLICATIVE IDENTITY",
@@ -287,15 +291,25 @@ GP_FONT_MATH_PATH: cstring = "assets/fonts/STIXTwoText-Regular.ttf" // equations
 GP_FONT_MATH_ITALIC_PATH: cstring = "assets/fonts/STIXTwoText-Italic.ttf" // the variable x
 GP_BACKGROUND_PATH: cstring = "assets/images/main_menu_bg.png" // drawn very dim; optional
 
-// Seam for Phase 2: where Run_Info comes from (campaign/progress).
+// Build the HUD snapshot from the persisted campaign progress. A run has one
+// round per puzzle; unlocked levels mark how far the player has progressed.
+// Score and streak are session data and start at zero for a new run.
 run_info_for :: proc(progress: core.Progress) -> Run_Info {
+	completed := 0
+	for i in 0 ..< len(PUZZLES) {
+		if i in progress.unlocked {
+			completed += 1
+		}
+	}
+	round := clamp(completed + 1, 1, len(PUZZLES))
+
 	return {
 		mode         = "ARCANE TRIALS",
 		tier         = core.Difficulty.Normal,
-		round        = 1, // 1-based
-		rounds_total = 10,
-		score        = 5000,
-		streak       = 5,
+		round        = round, // 1-based
+		rounds_total = len(PUZZLES),
+		score        = 0,
+		streak       = 0,
 	}
 }
 
