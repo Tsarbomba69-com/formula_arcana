@@ -7,10 +7,10 @@ import rl "vendor:raylib"
 
 // Texture_Manager handles loading, storing, and unloading GPU texture assets safely.
 Texture_Manager :: struct {
-	textures:  map[shared.Texture_Id]rl.Texture2D,
+	textures:     map[shared.Texture_Id]rl.Texture2D,
 	texture_keys: map[string]shared.Texture_Id,
-	next_id:   u32,
-	allocator: runtime.Allocator,
+	next_id:      u32,
+	allocator:    runtime.Allocator,
 }
 
 // init_texture_manager allocates and initializes an empty texture manager.

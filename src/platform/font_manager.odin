@@ -66,6 +66,7 @@ load_font_from_file :: proc(
 		append(&codepoints, rune(r))
 	}
 	// Star rating glyphs (supported by latinmodern-math.ttf)
+	append(&codepoints, '−') // U+2212 MINUS SIGN
 	append(&codepoints, '★') // U+2605
 	append(&codepoints, '☆') // U+2606
 

@@ -24,6 +24,12 @@ ui_draw_node :: proc(t: ^UI_Tree, i: int, ix: Interaction, r: shared.Renderer, s
 	case Container: for c in n.children[:n.child_count] {
 				ui_draw_node(t, c, ix, r, scale)
 			}
+	case Scroll_View:
+		if r.begin_clip != nil { r.begin_clip(rect) }
+		for c in n.children[:n.child_count] {
+			ui_draw_node(t, c, ix, r, scale)
+		}
+		if r.end_clip != nil { r.end_clip() }
 	case Text:
 		size := i32(f32(k.font_size) * scale)
 		line_h := f32(k.font_size) * DEFAULT_LINE_HEIGHT_SCALE * scale
@@ -76,7 +82,7 @@ ui_dump :: proc(t: ^UI_Tree) {
 	fmt.println("--- UI Tree Dump ---")
 	ui_dump_node(t, t.root, 0)
 }
-
+// TODO: Remove this
 @(private)
 ui_dump_node :: proc(t: ^UI_Tree, i: int, depth: int) {
 	if i < 0 || i >= t.count { return }
@@ -102,6 +108,9 @@ ui_dump_node :: proc(t: ^UI_Tree, i: int, depth: int) {
 	case Button:
 		kind_str = "Button"
 		details = fmt.tprint("label=\"", k.label, "\", action=", k.action)
+	case Scroll_View:
+		kind_str = "Scroll_View"
+		details = fmt.tprint("viewport=", k.width, "x", k.height)
 	}
 
 	// Format background info

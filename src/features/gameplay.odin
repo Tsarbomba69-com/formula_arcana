@@ -2,7 +2,6 @@ package features
 
 import "../core"
 import "../shared"
-import "core:fmt"
 import "core:log"
 import "core:math"
 
@@ -195,35 +194,46 @@ Gameplay_Fonts :: struct {
 	ui, display, mono, math, math_italic: shared.Font_Id,
 }
 
+Gameplay_Scroll_Drag :: enum {
+	None,
+	Moves,
+	History,
+}
+
 Gameplay_State :: struct {
-	puzzle:          Puzzle,
-	run:             Run_Info,
-	workspace:       Workspace,
-	elapsed:         f32, // seconds; frozen while paused or solved
-	paused:          bool,
-	viewport:        shared.Viewport,
-	tree:            core.UI_Tree,
-	ix:              core.Interaction,
-	font:            shared.Font_Id,
+	puzzle:            Puzzle,
+	run:               Run_Info,
+	workspace:         Workspace,
+	elapsed:           f32, // seconds; frozen while paused or solved
+	paused:            bool,
+	viewport:          shared.Viewport,
+	tree:              core.UI_Tree,
+	ix:                core.Interaction,
+	font:              shared.Font_Id,
 
 	// Interactive nodes (rebuilt together with the tree after every state change).
-	move_nodes:      [MAX_MOVES]int,
-	move_node_count: int,
-	tile_nodes:      [MAX_TOKENS]int, // index == token index
-	tile_node_count: int,
-	apply_node:      int,
-	undo_node:       int,
-	restart_node:    int,
-	pause_node:      int,
+	move_nodes:        [MAX_MOVES]int,
+	move_node_count:   int,
+	moves_scroll_y:    f32,
+	history_scroll_y:  f32,
+	scroll_drag:       Gameplay_Scroll_Drag,
+	scroll_drag_y:     f32,
+	scroll_drag_start: f32,
+	tile_nodes:        [MAX_TOKENS]int, // index == token index
+	tile_node_count:   int,
+	apply_node:        int,
+	undo_node:         int,
+	restart_node:      int,
+	pause_node:        int,
 
 	// Visuals (owned by gameplay_view.odin)
-	fonts:           Gameplay_Fonts,
-	background:      shared.Texture_Id,
-	measure:         shared.Measure_Text, // kept so update_gameplay can call gameplay_rebuild
-	design:          shared.Vec2, // window size in design units
-	origin_x:        f32, // left margin that centres the 1440-wide content
-	tokens:          Token_List, // tiles of the current formula (index == tile_nodes index)
-	tile_font_size:  f32,
+	fonts:             Gameplay_Fonts,
+	background:        shared.Texture_Id,
+	measure:           shared.Measure_Text, // kept so update_gameplay can call gameplay_rebuild
+	design:            shared.Vec2, // window size in design units
+	origin_x:          f32, // left margin that centres the 1440-wide content
+	tokens:            Token_List, // tiles of the current formula (index == tile_nodes index)
+	tile_font_size:    f32,
 }
 
 // ============================================================================
@@ -271,7 +281,6 @@ GP_PANEL_TOP :: f32(261)
 GP_PANEL_BOTTOM :: f32(852)
 
 GP_MOVES_VISIBLE_MAX :: 4
-GP_HISTORY_VISIBLE :: 3
 GP_TILE_FONT_MAX :: f32(42)
 GP_TILE_FONT_MIN :: f32(24)
 GP_TILE_H :: f32(65)
@@ -373,12 +382,22 @@ layout_gameplay :: proc(s: ^Gameplay_State, ctx: ^Context) {
 	s.restart_node = core.ui_add(&s.tree, core.Button{action = int(Gameplay_Action.Restart)})
 	s.pause_node = core.ui_add(&s.tree, core.Button{action = int(Gameplay_Action.Pause)})
 
-	visible := min(s.workspace.moves.count, GP_MOVES_VISIBLE_MAX)
-	first, _ := gp_move_window(&s.workspace)
-	for slot in 0 ..< visible {
-		index := first + slot
-		s.tree.nodes[s.move_nodes[index]].rect = gp_move_card_rect(s.origin_x, slot, visible)
+	for index in 0 ..< s.move_node_count {
+		s.tree.nodes[s.move_nodes[index]].rect = gp_move_card_rect(
+			s.origin_x,
+			index,
+			s.move_node_count,
+		)
 	}
+	moves_view := gp_moves_view_rect(s.origin_x)
+	moves_content_h := gp_moves_content_height(s.move_node_count)
+	s.moves_scroll_y = clamp(s.moves_scroll_y, 0, max(moves_content_h - moves_view.h, 0))
+	for index in 0 ..< s.move_node_count {
+		s.tree.nodes[s.move_nodes[index]].rect.y -= s.moves_scroll_y
+	}
+	history_view := gp_history_view_rect(s.origin_x)
+	history_content_h := gp_history_content_height(s.workspace.entry_count)
+	s.history_scroll_y = clamp(s.history_scroll_y, 0, max(history_content_h - history_view.h, 0))
 	box := gp_rect_formula_box(s.origin_x)
 	if s.tile_node_count > 0 {
 		gap := GP_TILE_GAP
@@ -425,13 +444,57 @@ update_gameplay :: proc(s: ^Gameplay_State, events: []core.Event) -> core.Naviga
 				case .Down:
 					workspace_step_selection(&s.workspace, 1)
 					gameplay_rebuild(s)
-				case .Confirm:
-					if !s.paused && workspace_apply(&s.workspace) { gameplay_rebuild(s) }
+				case .Confirm: if !s.paused && workspace_apply(&s.workspace) {
+							s.history_scroll_y = gp_history_scroll_max(s)
+							gameplay_rebuild(s)
+						}
 				case .Left, .Right:
 				}
 		case shared.Mouse_Input:
 			position := input.position / max(s.viewport.scale, 0.001)
+			if input.wheel != 0 {
+				if shared.contains_point(gp_moves_view_rect(s.origin_x), position) {
+					previous_scroll := s.moves_scroll_y
+					s.moves_scroll_y = clamp(
+						s.moves_scroll_y - input.wheel * GP_SCROLL_STEP,
+						0,
+						gp_moves_scroll_max(s),
+					)
+					delta := s.moves_scroll_y - previous_scroll
+					for node in s.move_nodes[:s.move_node_count] {
+						s.tree.nodes[node].rect.y -= delta
+					}
+				} else if shared.contains_point(gp_history_view_rect(s.origin_x), position) {
+					s.history_scroll_y = clamp(
+						s.history_scroll_y - input.wheel * GP_SCROLL_STEP,
+						0,
+						gp_history_scroll_max(s),
+					)
+				}
+			}
+			scrollbar_active := false
+			if input.pressed {
+				scrollbar_active = gp_begin_scrollbar_drag(s, position)
+			}
+			if s.scroll_drag != .None && input.down {
+				gp_update_scrollbar_drag(s, position.y)
+				scrollbar_active = true
+			}
+			if input.released && s.scroll_drag != .None {
+				s.scroll_drag = .None
+				scrollbar_active = true
+			}
+			if scrollbar_active {
+				s.ix.hover = nil
+				s.ix.pressed = nil
+				continue
+			}
 			hit, over := core.ui_button_at(&s.tree, position)
+			if over &&
+			   gp_is_move_node(s, hit) &&
+			   !shared.contains_point(gp_moves_view_rect(s.origin_x), position) {
+				over = false
+			}
 			if over { s.ix.hover = hit } else { s.ix.hover = nil }
 			if input.pressed && over { s.ix.pressed = hit; s.ix.focus = hit }
 			if input.released {
@@ -476,7 +539,10 @@ gameplay_activate :: proc(s: ^Gameplay_State, node: int) {
 		}
 	}
 	switch node {
-	case s.apply_node: if workspace_apply(&s.workspace) { gameplay_rebuild(s) }
+	case s.apply_node: if workspace_apply(&s.workspace) {
+				s.history_scroll_y = gp_history_scroll_max(s)
+				gameplay_rebuild(s)
+			}
 	case s.undo_node: if workspace_undo(&s.workspace) { gameplay_rebuild(s) }
 	case s.restart_node:
 		workspace_restart(&s.workspace); s.elapsed = 0; gameplay_rebuild(s)
@@ -549,6 +615,171 @@ gp_rect_history :: proc(ox: f32) -> shared.Rect {
 	return {ox + 1072, GP_PANEL_TOP, 336, GP_PANEL_BOTTOM - GP_PANEL_TOP}
 }
 
+@(private = "file")
+GP_SCROLL_STEP :: f32(72)
+GP_SCROLLBAR_MIN_THUMB :: f32(36)
+
+// Returns the design-space viewport where transformation cards are clipped and hit-tested.
+gp_moves_view_rect :: proc(ox: f32) -> shared.Rect {
+	p := gp_rect_moves(ox)
+	return {p.x + 12, p.y + 91, p.w - 24, p.h - 143}
+}
+
+// Returns the design-space viewport where history cards are clipped and hit-tested.
+gp_history_view_rect :: proc(ox: f32) -> shared.Rect {
+	p := gp_rect_history(ox)
+	return {p.x + 12, p.y + 90, p.w - 24, p.h - 204}
+}
+
+@(private = "file")
+gp_moves_content_height :: proc(count: int) -> f32 {
+	if count <= 0 { return 0 }
+	visible := min(count, GP_MOVES_VISIBLE_MAX)
+	height := gp_card_height(visible)
+	gap := gp_card_gap(visible)
+	return 13 + f32(count) * (height + gap) - gap
+}
+
+@(private = "file")
+gp_history_content_height :: proc(count: int) -> f32 {
+	return max(f32(count) * 126 - 3, 0)
+}
+
+@(private = "file")
+gp_moves_scroll_max :: proc(s: ^Gameplay_State) -> f32 {
+	return max(gp_moves_content_height(s.move_node_count) - gp_moves_view_rect(s.origin_x).h, 0)
+}
+
+@(private = "file")
+gp_history_scroll_max :: proc(s: ^Gameplay_State) -> f32 {
+	return max(
+		gp_history_content_height(s.workspace.entry_count) - gp_history_view_rect(s.origin_x).h,
+		0,
+	)
+}
+
+@(private = "file")
+gp_moves_scrollbar_track :: proc(s: ^Gameplay_State) -> shared.Rect {
+	view := gp_moves_view_rect(s.origin_x)
+	return {view.x + view.w - 9, view.y, 9, view.h}
+}
+
+@(private = "file")
+gp_history_scrollbar_track :: proc(s: ^Gameplay_State) -> shared.Rect {
+	view := gp_history_view_rect(s.origin_x)
+	return {view.x + view.w - 9, view.y, 9, view.h}
+}
+
+@(private = "file")
+gp_scrollbar_thumb :: proc(
+	track: shared.Rect,
+	viewport_height, content_height, scroll, scroll_max: f32,
+) -> shared.Rect {
+	if scroll_max <= 0 || content_height <= 0 { return {} }
+	thumb_h := clamp(track.h * viewport_height / content_height, GP_SCROLLBAR_MIN_THUMB, track.h)
+	travel := track.h - thumb_h
+	thumb_y := track.y + (scroll_max > 0 ? scroll / scroll_max : 0) * travel
+	return {track.x - 1.5, thumb_y, track.w + 3, thumb_h}
+}
+
+@(private = "file")
+gp_moves_scrollbar_thumb :: proc(s: ^Gameplay_State) -> shared.Rect {
+	view := gp_moves_view_rect(s.origin_x)
+	return gp_scrollbar_thumb(
+		gp_moves_scrollbar_track(s),
+		view.h,
+		gp_moves_content_height(s.move_node_count),
+		s.moves_scroll_y,
+		gp_moves_scroll_max(s),
+	)
+}
+
+@(private = "file")
+gp_history_scrollbar_thumb :: proc(s: ^Gameplay_State) -> shared.Rect {
+	view := gp_history_view_rect(s.origin_x)
+	return gp_scrollbar_thumb(
+		gp_history_scrollbar_track(s),
+		view.h,
+		gp_history_content_height(s.workspace.entry_count),
+		s.history_scroll_y,
+		gp_history_scroll_max(s),
+	)
+}
+
+@(private = "file")
+gp_begin_scrollbar_drag :: proc(s: ^Gameplay_State, position: shared.Vec2) -> bool {
+	if gp_moves_scroll_max(s) > 0 {
+		track := gp_moves_scrollbar_track(s)
+		if shared.contains_point(track, position) {
+			thumb := gp_moves_scrollbar_thumb(s)
+			if !shared.contains_point(thumb, position) {
+				travel := max(track.h - thumb.h, 1)
+				ratio := clamp((position.y - track.y - thumb.h / 2) / travel, 0, 1)
+				gp_set_moves_scroll(s, ratio * gp_moves_scroll_max(s))
+			}
+			s.scroll_drag = .Moves
+			s.scroll_drag_y = position.y
+			s.scroll_drag_start = s.moves_scroll_y
+			return true
+		}
+	}
+	if gp_history_scroll_max(s) > 0 {
+		track := gp_history_scrollbar_track(s)
+		if shared.contains_point(track, position) {
+			thumb := gp_history_scrollbar_thumb(s)
+			if !shared.contains_point(thumb, position) {
+				travel := max(track.h - thumb.h, 1)
+				ratio := clamp((position.y - track.y - thumb.h / 2) / travel, 0, 1)
+				gp_set_history_scroll(s, ratio * gp_history_scroll_max(s))
+			}
+			s.scroll_drag = .History
+			s.scroll_drag_y = position.y
+			s.scroll_drag_start = s.history_scroll_y
+			return true
+		}
+	}
+	return false
+}
+
+@(private = "file")
+gp_update_scrollbar_drag :: proc(s: ^Gameplay_State, pointer_y: f32) {
+	if s.scroll_drag == .Moves {
+		track := gp_moves_scrollbar_track(s)
+		thumb := gp_moves_scrollbar_thumb(s)
+		travel := max(track.h - thumb.h, 1)
+		scroll_delta := (pointer_y - s.scroll_drag_y) * gp_moves_scroll_max(s) / travel
+		gp_set_moves_scroll(s, s.scroll_drag_start + scroll_delta)
+	} else if s.scroll_drag == .History {
+		track := gp_history_scrollbar_track(s)
+		thumb := gp_history_scrollbar_thumb(s)
+		travel := max(track.h - thumb.h, 1)
+		scroll_delta := (pointer_y - s.scroll_drag_y) * gp_history_scroll_max(s) / travel
+		gp_set_history_scroll(s, s.scroll_drag_start + scroll_delta)
+	}
+}
+
+@(private = "file")
+gp_set_moves_scroll :: proc(s: ^Gameplay_State, offset: f32) {
+	previous := s.moves_scroll_y
+	s.moves_scroll_y = clamp(offset, 0, gp_moves_scroll_max(s))
+	for node in s.move_nodes[:s.move_node_count] {
+		s.tree.nodes[node].rect.y -= s.moves_scroll_y - previous
+	}
+}
+
+@(private = "file")
+gp_set_history_scroll :: proc(s: ^Gameplay_State, offset: f32) {
+	s.history_scroll_y = clamp(offset, 0, gp_history_scroll_max(s))
+}
+
+@(private = "file")
+gp_is_move_node :: proc(s: ^Gameplay_State, node: int) -> bool {
+	for move_node in s.move_nodes[:s.move_node_count] {
+		if move_node == node { return true }
+	}
+	return false
+}
+
 gp_rect_formula_box :: proc(ox: f32) -> shared.Rect {
 	p := gp_rect_formula(ox)
 	return {p.x + 24, p.y + 86, p.w - 48, 115}
@@ -576,15 +807,6 @@ gp_rect_pause :: proc(ox: f32) -> shared.Rect {
 	return {ox + 1337, 98, 47, 47}
 }
 
-// Which move cards are on screen: a window that always contains the selection.
-gp_move_window :: proc(w: ^Workspace) -> (first, visible: int) {
-	count := w.moves.count
-	visible = min(count, GP_MOVES_VISIBLE_MAX)
-	if w.selected_move >= visible { first = w.selected_move - visible + 1 }
-	first = clamp(first, 0, max(count - visible, 0))
-	return
-}
-
 gp_card_height :: proc(visible: int) -> f32 {
 	return visible <= 3 ? 122 : 98
 }
@@ -593,11 +815,12 @@ gp_card_gap :: proc(visible: int) -> f32 {
 	return visible <= 3 ? 18 : 12
 }
 
-// slot == position among the VISIBLE cards. This is the unselected (hit) rect.
-gp_move_card_rect :: proc(ox: f32, slot, visible: int) -> shared.Rect {
+// slot == zero-based position in the full transformations list.
+gp_move_card_rect :: proc(ox: f32, slot, count: int) -> shared.Rect {
 	p := gp_rect_moves(ox)
-	h := gp_card_height(visible)
-	return {p.x + 22, 365 + f32(slot) * (h + gp_card_gap(visible)), p.w - 44, h}
+	card_count := min(count, GP_MOVES_VISIBLE_MAX)
+	h := gp_card_height(card_count)
+	return {p.x + 22, 365 + f32(slot) * (h + gp_card_gap(card_count)), p.w - 44, h}
 }
 
 gp_history_card_rect :: proc(ox: f32, slot: int) -> shared.Rect {
@@ -728,9 +951,13 @@ gp_draw_moves_panel :: proc(v: ^Gp_View) {
 
 	if w.entry_count > 0 {
 		eq := workspace_current(w)
-		first, visible := gp_move_window(w)
-		for slot in 0 ..< visible {
-			gp_draw_move_card(v, &eq, first + slot, visible)
+		gp_begin_panel_clip(v, gp_moves_view_rect(s.origin_x))
+		for index in 0 ..< s.move_node_count {
+			gp_draw_move_card(v, &eq, index)
+		}
+		gp_end_panel_clip(v)
+		if gp_moves_scroll_max(s) > 0 {
+			gp_draw_scrollbar(v, gp_moves_scrollbar_track(s), gp_moves_scrollbar_thumb(s))
 		}
 	}
 
@@ -738,7 +965,7 @@ gp_draw_moves_panel :: proc(v: ^Gp_View) {
 }
 
 @(private = "file")
-gp_draw_move_card :: proc(v: ^Gp_View, eq: ^Equation, index, visible: int) {
+gp_draw_move_card :: proc(v: ^Gp_View, eq: ^Equation, index: int) {
 	s := v.s
 	w := &s.workspace
 	node := s.move_nodes[index]
@@ -999,14 +1226,13 @@ gp_draw_history_panel :: proc(v: ^Gp_View) {
 	)
 	gp_hline(v, x, p.y + 83, p.w - 44, GP_DIVIDER)
 
-	// Most recent entries only; the initial formula scrolls away after 3 cards.
-	first := max(w.entry_count - GP_HISTORY_VISIBLE, 0)
-	for i in first ..< w.entry_count {
-		gp_draw_history_card(v, i, i - first)
+	gp_begin_panel_clip(v, gp_history_view_rect(ox))
+	for i in 0 ..< w.entry_count {
+		gp_draw_history_card(v, i, i)
 	}
-	if first > 0 {
-		text := fmt.bprintf(buf[:], "+%d earlier steps", first)
-		gp_text(v, text, x, 741, 10, GP_MUTED, s.fonts.mono)
+	gp_end_panel_clip(v)
+	if gp_history_scroll_max(s) > 0 {
+		gp_draw_scrollbar(v, gp_history_scrollbar_track(s), gp_history_scrollbar_thumb(s))
 	}
 
 	gp_draw_footer_button(v, s.undo_node, "UNDO LAST", w.entry_count > 1 && !s.paused)
@@ -1018,6 +1244,7 @@ gp_draw_history_card :: proc(v: ^Gp_View, index, slot: int) {
 	s := v.s
 	w := &s.workspace
 	r := gp_history_card_rect(s.origin_x, slot)
+	r.y -= s.history_scroll_y
 	current := index == w.entry_count - 1
 	if current {
 		gp_box(v, r, GP_TEAL_FILL, GP_TEAL, 1.5)
@@ -1100,6 +1327,22 @@ gp_draw_stats_pause_only :: proc(v: ^Gp_View) {
 gp_scaled :: proc(v: ^Gp_View, r: shared.Rect) -> shared.Rect {
 	k := v.scale
 	return {r.x * k, r.y * k, r.w * k, r.h * k}
+}
+
+@(private = "file")
+gp_draw_scrollbar :: proc(v: ^Gp_View, track, thumb: shared.Rect) {
+	gp_fill(v, track, {5, 14, 21, 255})
+	gp_box(v, thumb, GP_TEAL_DIM, GP_TEAL)
+}
+
+@(private = "file")
+gp_begin_panel_clip :: proc(v: ^Gp_View, r: shared.Rect) {
+	if v.r.begin_clip != nil { v.r.begin_clip(gp_scaled(v, r)) }
+}
+
+@(private = "file")
+gp_end_panel_clip :: proc(v: ^Gp_View) {
+	if v.r.end_clip != nil { v.r.end_clip() }
 }
 
 @(private = "file")

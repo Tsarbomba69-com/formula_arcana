@@ -91,6 +91,18 @@ host_draw_texture :: proc "c" (
 	state.renderer.draw_texture(shared.Texture_Id(texture_id), {x, y, width, height}, {r, g, b, a})
 }
 
+host_begin_clip :: proc "c" (user_data: rawptr, x, y, width, height: f32) {
+	context = runtime.default_context()
+	state := (^Host_State)(user_data)
+	state.renderer.begin_clip({x, y, width, height})
+}
+
+host_end_clip :: proc "c" (user_data: rawptr) {
+	context = runtime.default_context()
+	state := (^Host_State)(user_data)
+	state.renderer.end_clip()
+}
+
 init_host :: proc(app: ^Game) {
 	app.host_state.tex_mgr = platform.init_texture_manager()
 	app.host_state.font_mgr = platform.init_font_manager()
@@ -110,6 +122,8 @@ init_host :: proc(app: ^Game) {
 		fill_rect    = host_fill_rect,
 		outline_rect = host_outline_rect,
 		draw_texture = host_draw_texture,
+		begin_clip   = host_begin_clip,
+		end_clip     = host_end_clip,
 	}
 	app.reloader = hot_reload.make_dev_reloader()
 }
@@ -139,6 +153,7 @@ collect_events :: proc(app: ^Game) -> []hot_reload.Hot_Event {
 			flags: u32
 			if e.pressed { flags |= hot_reload.EVENT_FLAG_PRESSED }
 			if e.released { flags |= hot_reload.EVENT_FLAG_RELEASED }
+			if e.down { flags |= hot_reload.EVENT_FLAG_DOWN }
 			append(
 				&result,
 				hot_reload.Hot_Event {
@@ -146,6 +161,7 @@ collect_events :: proc(app: ^Game) -> []hot_reload.Hot_Event {
 					flags = flags,
 					x = e.position.x,
 					y = e.position.y,
+					wheel = e.wheel,
 				},
 			)
 		case shared.Key_Input:

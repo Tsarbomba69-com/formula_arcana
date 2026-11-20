@@ -81,7 +81,9 @@ given_no_equals_sign_when_parsed_then_missing_equals_is_reported :: proc(t: ^tes
 }
 
 @(test)
-given_unbalanced_parentheses_when_parsed_then_unbalanced_parens_is_reported :: proc(t: ^testing.T) {
+given_unbalanced_parentheses_when_parsed_then_unbalanced_parens_is_reported :: proc(
+	t: ^testing.T,
+) {
 	_, err := parse_equation("3(x − 4 = 17")
 	testing.expect_value(t, err, Parse_Error.Unbalanced_Parens)
 }
@@ -112,8 +114,15 @@ given_the_reference_formula_when_tokenized_then_nine_tiles_with_the_design_kinds
 
 	want_text := [?]string{"3", "x", "−", "4", "=", "2", "x", "+", "17"}
 	want_kind := [?]Token_Kind {
-		.Constant, .Variable, .Operator, .Constant, .Operator,
-		.Constant, .Variable, .Operator, .Constant,
+		.Constant,
+		.Variable,
+		.Operator,
+		.Constant,
+		.Operator,
+		.Constant,
+		.Variable,
+		.Operator,
+		.Constant,
 	}
 	testing.expect_value(t, tokens.count, len(want_text))
 	for i in 0 ..< min(tokens.count, len(want_text)) {
@@ -227,7 +236,11 @@ given_a_move_when_described_then_heading_is_uppercase_but_the_variable_stays_low
 	expect_label(t, describe_move(eq, moves.items[1]).heading, "AFTER ADDING 4")
 
 	start := parse_ok(t, START)
-	expect_label(t, describe_move(start, valid_moves(start).items[0]).heading, "AFTER DISTRIBUTING 3")
+	expect_label(
+		t,
+		describe_move(start, valid_moves(start).items[0]).heading,
+		"AFTER DISTRIBUTING 3",
+	)
 }
 
 @(test)

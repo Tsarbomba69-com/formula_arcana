@@ -63,10 +63,10 @@ Expr_Node :: union {
 }
 
 Equation :: struct {
-	nodes:     [MAX_NODES]Expr_Node,
-	count:     int,
-	lhs, rhs:  Expr_Id,
-	overflow:  bool, // the pool was too small while building
+	nodes:    [MAX_NODES]Expr_Node,
+	count:    int,
+	lhs, rhs: Expr_Id,
+	overflow: bool, // the pool was too small while building
 }
 
 Side :: enum {
@@ -223,10 +223,9 @@ alg_collect :: proc(eq: ^Equation, id: Expr_Id, neg: bool, out: ^Sum_List) {
 alg_intrinsic_neg :: proc(eq: ^Equation, id: Expr_Id) -> bool {
 	#partial switch n in alg_node(eq, id) {
 	case Num: return n.value < 0
-	case Bin:
-		if n.op == .Mul {
-			if a, ok := alg_node(eq, n.left).(Num); ok { return a.value < 0 }
-		}
+	case Bin: if n.op == .Mul {
+				if a, ok := alg_node(eq, n.left).(Num); ok { return a.value < 0 }
+			}
 	}
 	return false
 }
@@ -301,7 +300,9 @@ alg_print_factor :: proc(eq: ^Equation, id: Expr_Id, w: ^Writer) {
 format_equation :: proc(eq: Equation, buf: []u8) -> string {
 	eq := eq
 	if eq.count == 0 { return "" }
-	w := Writer{buf = buf}
+	w := Writer {
+		buf = buf,
+	}
 	alg_print_side(&eq, eq.lhs, &w)
 	w_str(&w, " = ")
 	alg_print_side(&eq, eq.rhs, &w)
@@ -311,7 +312,9 @@ format_equation :: proc(eq: Equation, buf: []u8) -> string {
 format_side :: proc(eq: Equation, side: Side, buf: []u8) -> string {
 	eq := eq
 	if eq.count == 0 { return "" }
-	w := Writer{buf = buf}
+	w := Writer {
+		buf = buf,
+	}
 	alg_print_side(&eq, side == .Left ? eq.lhs : eq.rhs, &w)
 	return w_text(&w)
 }
@@ -383,7 +386,14 @@ parse_equation :: proc(src: string) -> (eq: Equation, err: Parse_Error) {
 	for r in src {
 		if r == ' ' || r == '\t' { continue }
 		valid :=
-			p_is_digit(r) || p_is_letter(r) || p_is_minus(r) || r == '+' || r == '*' || r == '=' || r == '(' || r == ')'
+			p_is_digit(r) ||
+			p_is_letter(r) ||
+			p_is_minus(r) ||
+			r == '+' ||
+			r == '*' ||
+			r == '=' ||
+			r == '(' ||
+			r == ')'
 		if !valid { return {}, .Unexpected_Character }
 		if r == '(' { depth += 1 }
 		if r == ')' {
@@ -403,7 +413,7 @@ parse_equation :: proc(src: string) -> (eq: Equation, err: Parse_Error) {
 	p.pos += 1
 	eq.rhs = p_expr(&p)
 	if p.err != .None { return {}, p.err }
-	if p.pos < p.n { return {}, .Unexpected_Character } // a second "=" or stray ")"
+	if p.pos < p.n { return {}, .Unexpected_Character } 	// a second "=" or stray ")"
 	return eq, .None
 }
 
@@ -674,15 +684,14 @@ alg_classify :: proc(eq: ^Equation, t: Sum_Term, allow_group: bool) -> Term_Info
 				info.kind = .Var
 				info.value = sign * a.value
 				info.name = rv.name
-			case Bin:
-				if allow_group && rv.op != .Mul {
-					if name, simple := alg_inner_simple(eq, n.right); simple {
-						info.kind = .Group
-						info.value = sign * a.value
-						info.inner = n.right
-						info.name = name
+			case Bin: if allow_group && rv.op != .Mul {
+						if name, simple := alg_inner_simple(eq, n.right); simple {
+							info.kind = .Group
+							info.value = sign * a.value
+							info.inner = n.right
+							info.name = name
+						}
 					}
-				}
 			}
 		} else if lv, ok2 := l.(Var); ok2 {
 			if rn, ok3 := r.(Num); ok3 {
@@ -872,13 +881,12 @@ alg_move_touches :: proc(eq: ^Equation, m: Move, term: Expr_Id) -> bool {
 		for t in info.items[:info.count] {
 			if t.node == term && t.kind == want { return true }
 		}
-	case .Divide_Both:
-		for side in Side {
-			info := alg_analyze(eq, side)
-			for t in info.items[:info.count] {
-				if t.node == term { return true }
+	case .Divide_Both: for side in Side {
+				info := alg_analyze(eq, side)
+				for t in info.items[:info.count] {
+					if t.node == term { return true }
+				}
 			}
-		}
 	}
 	return false
 }
@@ -1121,9 +1129,16 @@ alg_perform :: proc(eq: ^Equation, m: Move) -> (out: Equation, ok: bool) {
 		sign := i64(m.kind == .Add_To_Both ? 1 : -1)
 		extra: Spec
 		if m.operand.has_var {
-			extra = Spec{kind = .Var, value = sign * m.operand.coef, name = name}
+			extra = Spec {
+				kind  = .Var,
+				value = sign * m.operand.coef,
+				name  = name,
+			}
 		} else {
-			extra = Spec{kind = .Const, value = sign * m.operand.coef}
+			extra = Spec {
+				kind  = .Const,
+				value = sign * m.operand.coef,
+			}
 		}
 		spec_push(&left, extra)
 		spec_push(&right, extra)
@@ -1185,7 +1200,9 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 	eq := eq
 	name := alg_eq_name(&eq)
 	buf: [LABEL_CAP * 2]u8
-	w := Writer{buf = buf[:]}
+	w := Writer {
+		buf = buf[:],
+	}
 
 	// ---- title ----
 	switch m.kind {
@@ -1242,16 +1259,15 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 		w_str(&w, "Merge the like terms on the ")
 		w_str(&w, side_word)
 		w_str(&w, ".")
-	case .Add_To_Both, .Subtract_From_Both:
-		if m.operand.has_var {
-			w_str(&w, "Cancel the variable on the ")
-			w_str(&w, side_word)
-			w_str(&w, ".")
-		} else if m.side == .Left {
-			w_str(&w, "Remove the constant on the left.")
-		} else {
-			w_str(&w, "Move the right-hand constant.")
-		}
+	case .Add_To_Both, .Subtract_From_Both: if m.operand.has_var {
+				w_str(&w, "Cancel the variable on the ")
+				w_str(&w, side_word)
+				w_str(&w, ".")
+			} else if m.side == .Left {
+				w_str(&w, "Remove the constant on the left.")
+			} else {
+				w_str(&w, "Move the right-hand constant.")
+			}
 	case .Divide_Both: w_str(&w, "Divide both sides by the coefficient.")
 	}
 	label_set(&view.hint, w_text(&w))
@@ -1261,9 +1277,9 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 	switch m.kind {
 	case .Distribute, .Combine_Constants, .Combine_Like_Terms:
 		if result, ok := alg_perform(&eq, m); ok {
-			out: [LABEL_CAP * 2]u8
-			w_str(&w, format_equation(result, out[:]))
-		}
+				out: [LABEL_CAP * 2]u8
+				w_str(&w, format_equation(result, out[:]))
+			}
 	case .Add_To_Both, .Subtract_From_Both, .Divide_Both:
 		op: string
 		switch m.kind {
@@ -1293,14 +1309,20 @@ explain_move :: proc(eq: Equation, m: Move) -> (note: Label) {
 	eq := eq
 	name := alg_eq_name(&eq)
 	buf: [LABEL_CAP * 2]u8
-	w := Writer{buf = buf[:]}
+	w := Writer {
+		buf = buf[:],
+	}
 
 	switch m.kind {
 	case .Distribute:
 		info := alg_analyze(&eq, m.side)
 		for t in info.items[:info.count] {
 			if t.node != m.target || t.kind != .Group { continue }
-			original := Spec{kind = .Node, src = t.node, neg = t.neg}
+			original := Spec {
+				kind = .Node,
+				src  = t.node,
+				neg  = t.neg,
+			}
 			alg_specs_text(&eq, {original}, &w)
 			w_str(&w, " becomes ")
 			expanded := alg_expand_group(&eq, t)

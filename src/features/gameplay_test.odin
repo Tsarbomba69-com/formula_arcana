@@ -288,6 +288,75 @@ given_gameplay_opens_when_laid_out_then_the_three_panels_sit_left_center_right :
 	testing.expect(t, apply.x + apply.w <= 1440, "Apply stays inside the 1440 design width")
 }
 
+@(test)
+given_the_transformation_list_overflows_when_the_wheel_moves_over_it_then_its_cards_scroll :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
+	state.workspace.moves.count = 8
+	layout_gameplay(&state, &ctx)
+	view := gp_moves_view_rect(state.origin_x)
+	position := shared.Vec2{view.x + view.w / 2, view.y + view.h / 2} * state.viewport.scale
+
+	_ = update_gameplay(&state, {shared.Mouse_Input{position = position, wheel = -1}})
+
+	testing.expect(
+		t,
+		state.moves_scroll_y > 0,
+		"wheel input should advance the transformation list",
+	)
+	testing.expect(
+		t,
+		state.tree.nodes[state.move_nodes[0]].rect.y < gp_move_card_rect(state.origin_x, 0, 8).y,
+		"scrolled transformation card geometry should move upward",
+	)
+}
+
+@(test)
+given_the_history_overflows_when_the_wheel_moves_over_it_then_history_scrolls_independently :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
+	state.workspace.entry_count = 8
+	layout_gameplay(&state, &ctx)
+	view := gp_history_view_rect(state.origin_x)
+	position := shared.Vec2{view.x + view.w / 2, view.y + view.h / 2} * state.viewport.scale
+
+	_ = update_gameplay(&state, {shared.Mouse_Input{position = position, wheel = -1}})
+
+	testing.expect(t, state.history_scroll_y > 0, "wheel input should advance the history panel")
+	testing.expect_value(t, state.moves_scroll_y, 0)
+}
+
+@(test)
+given_the_history_has_a_scrollbar_when_its_thumb_is_dragged_then_the_history_offset_changes :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
+	state.workspace.entry_count = 8
+	layout_gameplay(&state, &ctx)
+	view := gp_history_view_rect(state.origin_x)
+	track_x := view.x + view.w - 7
+	start := shared.Vec2{track_x, view.y + 20} * state.viewport.scale
+	finish := shared.Vec2{track_x, view.y + view.h - 20} * state.viewport.scale
+
+	_ = update_gameplay(
+		&state,
+		{shared.Mouse_Input{position = start, pressed = true, down = true}},
+	)
+	_ = update_gameplay(&state, {shared.Mouse_Input{position = finish, down = true}})
+	_ = update_gameplay(&state, {shared.Mouse_Input{position = finish, released = true}})
+
+	testing.expect(
+		t,
+		state.history_scroll_y > 0,
+		"dragging the history thumb should change its offset",
+	)
+}
+
 // ============================================================================
 // Feature: the reference screen (after Distribute 3 → Combine constants)
 // ============================================================================

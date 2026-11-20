@@ -30,6 +30,8 @@ Mouse_Input :: struct {
 	position: Vec2, // real pixels
 	pressed:  bool, // went down this frame
 	released: bool, // went up this frame
+	down:     bool, // button remains held this frame
+	wheel:    f32, // vertical wheel delta; positive scrolls up
 }
 
 Nav_Key :: enum {

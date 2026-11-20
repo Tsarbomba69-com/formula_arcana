@@ -11,6 +11,43 @@ g_active_tex_mgr: ^Texture_Manager
 @(private)
 g_active_font_mgr: ^Font_Manager
 
+@(private)
+RAYLIB_CLIP_STACK_CAPACITY :: 40
+
+@(private)
+g_clip_stack: [RAYLIB_CLIP_STACK_CAPACITY]shared.Rect
+
+@(private)
+g_clip_depth: int
+
+@(private)
+raylib_begin_clip :: proc(rect: shared.Rect) {
+	clipped := rect
+	if g_clip_depth > 0 {
+		parent := g_clip_stack[g_clip_depth - 1]
+		left := max(rect.x, parent.x)
+		top := max(rect.y, parent.y)
+		right := min(rect.x + rect.w, parent.x + parent.w)
+		bottom := min(rect.y + rect.h, parent.y + parent.h)
+		clipped = {left, top, max(right - left, 0), max(bottom - top, 0)}
+	}
+	assert(g_clip_depth < RAYLIB_CLIP_STACK_CAPACITY, "UI clip stack exceeded")
+	g_clip_stack[g_clip_depth] = clipped
+	g_clip_depth += 1
+	rl.BeginScissorMode(i32(clipped.x), i32(clipped.y), i32(clipped.w), i32(clipped.h))
+}
+
+@(private)
+raylib_end_clip :: proc() {
+	assert(g_clip_depth > 0, "UI clip stack underflow")
+	g_clip_depth -= 1
+	rl.EndScissorMode()
+	if g_clip_depth > 0 {
+		parent := g_clip_stack[g_clip_depth - 1]
+		rl.BeginScissorMode(i32(parent.x), i32(parent.y), i32(parent.w), i32(parent.h))
+	}
+}
+
 // The ONLY file (with window.odin) that talks to raylib for drawing.
 raylib_renderer :: proc(tex_mgr: ^Texture_Manager, font_mgr: ^Font_Manager) -> shared.Renderer {
 	g_active_tex_mgr = tex_mgr
@@ -61,5 +98,7 @@ raylib_renderer :: proc(tex_mgr: ^Texture_Manager, font_mgr: ^Font_Manager) -> s
 			target := rl.Rectangle{dest.x, dest.y, dest.w, dest.h}
 			rl.DrawTexturePro(raylib_tex, source, target, {0, 0}, 0.0, rl.Color(tint))
 		},
+		begin_clip = raylib_begin_clip,
+		end_clip = raylib_end_clip,
 	}
 }

@@ -11,7 +11,7 @@ package hot_reload
 // Both sides must be built for the same target and agree on this layout and
 // calling convention. Increment ABI_VERSION when making an incompatible change.
 
-ABI_VERSION :: 1
+ABI_VERSION :: 2
 
 // Event tags.
 EVENT_WINDOW_RESIZED :: 1
@@ -22,6 +22,7 @@ EVENT_TICK_INPUT :: 4
 // Event flags.
 EVENT_FLAG_PRESSED :: 1 << 0
 EVENT_FLAG_RELEASED :: 1 << 1
+EVENT_FLAG_DOWN :: 1 << 2
 
 // Navigation key values. These are ABI values, not core.Nav_Key values.
 KEY_UP :: 1
@@ -46,6 +47,7 @@ Hot_Event :: struct {
 	height: i32,
 	key:    u32,
 	dt:     f32,
+	wheel:  f32,
 }
 
 // A byte range used for opaque, versioned state snapshots.
@@ -97,6 +99,10 @@ Host_Draw_Texture_Proc :: proc "c" (
 	r, g, b, a: u8,
 )
 
+Host_Begin_Clip_Proc :: proc "c" (user_data: rawptr, x, y, width, height: f32)
+
+Host_End_Clip_Proc :: proc "c" (user_data: rawptr)
+
 Host_API :: struct {
 	abi_version:  u32,
 	struct_size:  u32,
@@ -109,6 +115,8 @@ Host_API :: struct {
 	fill_rect:    Host_Fill_Rect_Proc,
 	outline_rect: Host_Outline_Rect_Proc,
 	draw_texture: Host_Draw_Texture_Proc,
+	begin_clip:   Host_Begin_Clip_Proc,
+	end_clip:     Host_End_Clip_Proc,
 }
 
 // Module entry points. The host resolves the exported

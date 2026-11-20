@@ -21,6 +21,8 @@ poll_events :: proc(ch: ^core.Event_Channel) {
 			position = shared.Vec2(rl.GetMousePosition()),
 			pressed = rl.IsMouseButtonPressed(.LEFT),
 			released = rl.IsMouseButtonReleased(.LEFT),
+			down = rl.IsMouseButtonDown(.LEFT),
+			wheel = rl.GetMouseWheelMove(),
 		},
 	)
 

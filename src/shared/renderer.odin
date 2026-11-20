@@ -20,4 +20,6 @@ Renderer :: struct {
 	fill_rect:    proc(r: Rect, color: Color),
 	outline_rect: proc(r: Rect, thickness: f32, color: Color),
 	draw_texture: proc(id: Texture_Id, dest: Rect, tint: Color),
+	begin_clip:   proc(r: Rect),
+	end_clip:     proc(),
 }

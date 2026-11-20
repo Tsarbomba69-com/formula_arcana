@@ -103,6 +103,14 @@ module_draw_texture :: proc(id: shared.Texture_Id, rect: shared.Rect, tint: shar
 	)
 }
 
+module_begin_clip :: proc(rect: shared.Rect) {
+	g_host.begin_clip(g_host.user_data, rect.x, rect.y, rect.w, rect.h)
+}
+
+module_end_clip :: proc() {
+	g_host.end_clip(g_host.user_data)
+}
+
 noop_begin :: proc() {  }
 noop_end :: proc() {  }
 noop_clear :: proc(color: shared.Color) {  }
@@ -117,6 +125,8 @@ module_renderer :: proc() -> shared.Renderer {
 		fill_rect = module_fill_rect,
 		outline_rect = module_outline_rect,
 		draw_texture = module_draw_texture,
+		begin_clip = module_begin_clip,
+		end_clip = module_end_clip,
 	}
 }
 
@@ -177,6 +187,8 @@ game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count
 					position = {event.x, event.y},
 					pressed = event.flags & hot_reload.EVENT_FLAG_PRESSED != 0,
 					released = event.flags & hot_reload.EVENT_FLAG_RELEASED != 0,
+					down = event.flags & hot_reload.EVENT_FLAG_DOWN != 0,
+					wheel = event.wheel,
 				},
 			}
 			if navigation := features.update_screen(&state.screen, core_events);

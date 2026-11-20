@@ -62,6 +62,12 @@ Button :: struct {
 	padding:       Insets,
 }
 
+// Scroll_View fixes the visible area of one content child. Scroll offsets are
+// held in Scroll_State, not in the tree, so UI_Tree remains copy-safe.
+Scroll_View :: struct {
+	width, height: f32,
+}
+
 UI_Background_Type :: enum {
 	None,
 	Color,
@@ -83,21 +89,29 @@ Node_Kind :: union {
 	Container,
 	Text,
 	Button,
+	Scroll_View,
 }
 
 Node :: struct {
-	kind:        Node_Kind,
-	rect:        shared.Rect, // filled by ui_layout
-	children:    [UI_MAX_CHILDREN]int,
-	child_count: int,
-	background:  UI_Background,
-	border:      UI_Border,
+	kind:           Node_Kind,
+	rect:           shared.Rect, // filled by ui_layout
+	children:       [UI_MAX_CHILDREN]int,
+	child_count:    int,
+	background:     UI_Background,
+	border:         UI_Border,
+	content_extent: shared.Vec2,
 }
 
 UI_Tree :: struct {
 	nodes: [UI_MAX_NODES]Node,
 	count: int,
 	root:  int,
+}
+
+// Scroll_State stores one design-space offset per viewport node. The caller
+// owns the state and may copy it together with its screen state.
+Scroll_State :: struct {
+	offsets: [UI_MAX_NODES]shared.Vec2,
 }
 
 // ---- Interaction state lives OUTSIDE the nodes ------------------------------
@@ -183,6 +197,75 @@ ui_button_at :: proc(t: ^UI_Tree, p: shared.Vec2) -> (idx: int, ok: bool) {
 	return 0, false
 }
 
+// Returns a visible button under p, respecting each ancestor scroll viewport.
+ui_button_at_scroll :: proc(
+	t: ^UI_Tree,
+	state: Scroll_State,
+	p: shared.Vec2,
+) -> (
+	idx: int,
+	ok: bool,
+) {
+	for i in 0 ..< t.count {
+		if _, is_button := t.nodes[i].kind.(Button); !is_button { continue }
+		if !shared.contains_point(t.nodes[i].rect, p) { continue }
+		visible := true
+		for viewport_idx in 0 ..< t.count {
+			if _, is_view := t.nodes[viewport_idx].kind.(Scroll_View); !is_view { continue }
+			if ui_is_descendant(t, i, viewport_idx) &&
+			   !shared.contains_point(t.nodes[viewport_idx].rect, p) {
+				visible = false
+				break
+			}
+		}
+		if visible { return i, true }
+	}
+	return 0, false
+}
+
+@(private)
+ui_is_descendant :: proc(t: ^UI_Tree, node, ancestor: int) -> bool {
+	for child in t.nodes[ancestor].children[:t.nodes[ancestor].child_count] {
+		if child == node || ui_is_descendant(t, node, child) { return true }
+	}
+	return false
+}
+
+// Clamps and applies a design-space delta, returning the resulting offset.
+ui_scroll_by :: proc(
+	t: ^UI_Tree,
+	state: ^Scroll_State,
+	viewport_node: int,
+	delta: shared.Vec2,
+) -> shared.Vec2 {
+	return ui_scroll_to(t, state, viewport_node, state.offsets[viewport_node] + delta)
+}
+
+// Sets a design-space offset, clamped to the content overflow on each axis.
+ui_scroll_to :: proc(
+	t: ^UI_Tree,
+	state: ^Scroll_State,
+	viewport_node: int,
+	offset: shared.Vec2,
+) -> shared.Vec2 {
+	assert(viewport_node >= 0 && viewport_node < t.count)
+	assert(t.nodes[viewport_node].child_count == 1)
+	n := &t.nodes[viewport_node]
+	_, ok := n.kind.(Scroll_View)
+	assert(ok)
+	if !ui_is_finite(offset.x) || !ui_is_finite(offset.y) { return state.offsets[viewport_node] }
+	state.offsets[viewport_node] = {
+		clamp(offset.x, 0, max(n.content_extent.x - n.rect.w, 0)),
+		clamp(offset.y, 0, max(n.content_extent.y - n.rect.h, 0)),
+	}
+	return state.offsets[viewport_node]
+}
+
+@(private)
+ui_is_finite :: proc(value: f32) -> bool {
+	return value == value && abs(value) < 3.402823466e+38
+}
+
 // dir: +1 next, -1 previous. Wraps around.
 ui_focus_step :: proc(t: ^UI_Tree, ix: ^Interaction, dir: int) {
 	list, count := ui_buttons(t)
@@ -242,6 +325,31 @@ ui_layout :: proc(t: ^UI_Tree, design: shared.Vec2, measure: shared.Measure_Text
 	ui_place(t, t.root, {0, 0})
 }
 
+// Measures and places a tree, then applies each viewport's clamped scroll offset.
+ui_layout_scroll :: proc(
+	t: ^UI_Tree,
+	design: shared.Vec2,
+	measure: shared.Measure_Text,
+	state: Scroll_State,
+) {
+	ui_layout(t, design, measure)
+	ui_apply_scroll(t, t.root, state, {0, 0})
+}
+
+@(private)
+ui_apply_scroll :: proc(t: ^UI_Tree, i: int, state: Scroll_State, inherited: shared.Vec2) {
+	n := &t.nodes[i]
+	n.rect.x -= inherited.x
+	n.rect.y -= inherited.y
+	shift := inherited
+	if _, is_view := n.kind.(Scroll_View); is_view {
+		shift += state.offsets[i]
+	}
+	for child in n.children[:n.child_count] {
+		ui_apply_scroll(t, child, state, shift)
+	}
+}
+
 // Pass 1 (bottom-up): compute each node's size.
 ui_measure :: proc(t: ^UI_Tree, i: int, measure: shared.Measure_Text) -> shared.Vec2 {
 	n := &t.nodes[i]
@@ -258,6 +366,11 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: shared.Measure_Text) -> shared.
 		h := f32(BUTTON_FONT_SIZE) + k.padding.top + k.padding.bottom
 		if k.height > 0 { h = k.height }
 		size = {w, h}
+	case Scroll_View:
+		assert(n.child_count == 1, "Scroll_View requires exactly one content child")
+		content_size := ui_measure(t, n.children[0], measure)
+		n.content_extent = content_size
+		size = {k.width, k.height}
 	case Container:
 		main_axis, cross_axis: f32
 		for c in n.children[:n.child_count] {
@@ -280,7 +393,6 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: shared.Measure_Text) -> shared.
 		if k.width > 0 { size.x = k.width }
 		if k.height > 0 { size.y = k.height }
 	}
-
 	n.rect.w, n.rect.h = size.x, size.y
 	return size
 }
@@ -289,6 +401,13 @@ ui_measure :: proc(t: ^UI_Tree, i: int, measure: shared.Measure_Text) -> shared.
 ui_place :: proc(t: ^UI_Tree, i: int, origin: shared.Vec2) {
 	n := &t.nodes[i]
 	n.rect.x, n.rect.y = origin.x, origin.y
+	if _, is_scroll := n.kind.(Scroll_View); is_scroll {
+		child_idx := n.children[0]
+		child := &t.nodes[child_idx]
+		child.rect.w, child.rect.h = n.content_extent.x, n.content_extent.y
+		ui_place(t, child_idx, origin)
+		return
+	}
 
 	c, is_container := n.kind.(Container)
 	if !is_container { return }
