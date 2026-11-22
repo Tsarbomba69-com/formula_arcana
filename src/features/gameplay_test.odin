@@ -110,7 +110,9 @@ gp_tick :: proc(s: ^Gameplay_State, dt: f32) {
 // Distribute 3 → Combine constants, using the keyboard (Confirm applies the selected move).
 @(private = "file")
 gp_reach_reference_state :: proc(s: ^Gameplay_State) {
+	_ = gp_click(s, s.tile_nodes[0]) // select the grouped term to distribute
 	_ = gp_key(s, .Confirm)
+	_ = gp_click(s, s.tile_nodes[3]) // select a constant for combining
 	_ = gp_key(s, .Confirm)
 }
 
@@ -222,7 +224,7 @@ given_the_start_formula_when_gameplay_opens_then_the_panels_show_the_initial_sta
 		{
 			"VALID TRANSFORMATIONS",
 			"1 valid move · whole equation",
-			"Distribute 3",
+			"Distributive property",
 			"CURRENT FORMULA",
 			"STEP 00",
 			"SCOPE: EQUATION",
@@ -386,13 +388,13 @@ given_two_moves_were_applied_when_the_screen_draws_then_it_matches_the_reference
 		{
 			"3 valid moves · whole equation",
 			"Subtract 2x",
-			"3x − 4 − 2x = 2x + 17 − 2x",
+			"a = b  →  a − c = b − c",
 			"Cancel the variable on the right.",
 			"Add 4",
-			"3x − 4 + 4 = 2x + 17 + 4",
+			"a = b  →  a + c = b + c",
 			"Remove the constant on the left.",
 			"Subtract 17",
-			"3x − 4 − 17 = 2x + 17 − 17",
+			"a = b  →  a − c = b − c",
 			"Move the right-hand constant.",
 			"RECOMMENDED",
 			"SELECTED",
@@ -529,6 +531,7 @@ given_a_selected_move_when_confirm_is_pressed_then_it_is_applied_and_history_gro
 	state := gp_open(t, &ctx)
 	gp_reach_reference_state(&state)
 	capture: Gameplay_Test_Capture
+	_ = gp_click(&state, state.tile_nodes[5]) // select 2x before applying
 	navigation := gp_key(&state, .Confirm) // Subtract 2x
 	gp_draw(&state, ctx, &capture)
 
@@ -544,6 +547,7 @@ given_the_apply_button_is_clicked_when_released_on_it_then_the_selected_move_is_
 	ctx := gp_context()
 	state := gp_open(t, &ctx)
 	capture: Gameplay_Test_Capture
+	_ = gp_click(&state, state.tile_nodes[0]) // select the grouped term to distribute
 	_ = gp_click(&state, state.apply_node) // Distribute 3
 
 	testing.expect_value(t, workspace_step(&state.workspace), 1)
@@ -569,6 +573,79 @@ given_the_apply_button_is_pressed_when_released_elsewhere_then_nothing_is_applie
 // ============================================================================
 // Feature: inspecting a term (scope)
 // ============================================================================
+
+@(test)
+given_any_expression_term_when_selected_then_every_valid_transformation_for_that_term_is_shown :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
+	capture: Gameplay_Test_Capture
+	checked_terms: [MAX_TOKENS]Expr_Id
+	checked_count := 0
+
+	for i in 0 ..< state.tile_node_count {
+		term := state.tokens.items[i].term
+		if term == NO_EXPR { continue }
+
+		already_checked := false
+		for checked in checked_terms[:checked_count] {
+			if checked == term { already_checked = true; break }
+		}
+		if already_checked { continue }
+		checked_terms[checked_count] = term
+		checked_count += 1
+
+		_ = gp_click(&state, state.tile_nodes[i])
+		expected := valid_moves(workspace_current(&state.workspace), term)
+		testing.expect_value(t, state.workspace.moves.count, expected.count)
+		gp_draw(&state, ctx, &capture)
+		for move in expected.items[:expected.count] {
+			view := describe_move(workspace_current(&state.workspace), move)
+			testing.expect(
+				t,
+				gp_has(&capture, label_str(&view.title)),
+				"every valid transformation for a selected expression term should be rendered",
+			)
+		}
+	}
+}
+
+@(test)
+given_the_distributive_property_is_available_when_the_moves_panel_draws_then_general_addition_and_subtraction_rules_are_shown :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
+	capture: Gameplay_Test_Capture
+	gp_draw(&state, ctx, &capture)
+
+	gp_expect_all(
+		t,
+		&capture,
+		{
+			"Distributive property",
+			"Addition: a(b + c) = ab + ac",
+			"Subtraction: a(b - c) = ab - ac",
+		},
+	)
+}
+
+@(test)
+given_no_expression_token_is_selected_when_apply_is_clicked_then_the_formula_and_history_stay_unchanged :: proc(
+	t: ^testing.T,
+) {
+	ctx := gp_context()
+	state := gp_open(t, &ctx)
+
+	testing.expect(t, state.workspace.selection == nil, "no token is selected on entry")
+	_ = gp_click(&state, state.apply_node)
+
+	testing.expect_value(t, workspace_step(&state.workspace), 0)
+	testing.expect_value(t, state.workspace.entry_count, 1)
+	buf: [LABEL_CAP * 2]u8
+	testing.expect_value(t, format_equation(workspace_current(&state.workspace), buf[:]), START)
+}
 
 @(test)
 given_the_reference_state_when_a_tile_is_clicked_then_scope_becomes_the_term_and_moves_narrow :: proc(
@@ -750,7 +827,9 @@ given_the_reference_state_when_subtract_2x_and_add_4_are_applied_then_the_puzzle
 	gp_reach_reference_state(&state)
 	gp_tick(&state, 24)
 
+	_ = gp_click(&state, state.tile_nodes[5]) // select 2x
 	_ = gp_key(&state, .Confirm) // Subtract 2x
+	_ = gp_click(&state, state.tile_nodes[2]) // select 4
 	_ = gp_key(&state, .Confirm) // Add 4
 	gp_tick(&state, 10)
 	gp_draw(&state, ctx, &capture)
@@ -765,7 +844,9 @@ given_a_solved_puzzle_when_confirm_is_pressed_then_nothing_more_is_applied :: pr
 	ctx := gp_context()
 	state := gp_open(t, &ctx)
 	gp_reach_reference_state(&state)
+	_ = gp_click(&state, state.tile_nodes[5]) // select 2x
 	_ = gp_key(&state, .Confirm)
+	_ = gp_click(&state, state.tile_nodes[2]) // select 4
 	_ = gp_key(&state, .Confirm)
 
 	navigation := gp_key(&state, .Confirm)

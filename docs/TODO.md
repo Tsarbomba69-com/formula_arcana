@@ -12,4 +12,5 @@
 * [x] Add gameplay missing fonts [MEDIUM]
 * [x] Implement scroll to UI system. [MEDIUM]
 * [ ] Render formula state [HIGH]
+* [ ] Construct axiom/propertyes/inference rules database. [HIGH]
 * [ ] Construct UI by asset file (json, plaintext, etc). [LOW]

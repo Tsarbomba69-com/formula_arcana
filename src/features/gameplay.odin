@@ -392,9 +392,7 @@ layout_gameplay :: proc(s: ^Gameplay_State, ctx: ^Context) {
 	moves_view := gp_moves_view_rect(s.origin_x)
 	moves_content_h := gp_moves_content_height(s.move_node_count)
 	s.moves_scroll_y = clamp(s.moves_scroll_y, 0, max(moves_content_h - moves_view.h, 0))
-	for index in 0 ..< s.move_node_count {
-		s.tree.nodes[s.move_nodes[index]].rect.y -= s.moves_scroll_y
-	}
+	core.ui_scroll_nodes_by(&s.tree, s.move_nodes[:s.move_node_count], s.moves_scroll_y)
 	history_view := gp_history_view_rect(s.origin_x)
 	history_content_h := gp_history_content_height(s.workspace.entry_count)
 	s.history_scroll_y = clamp(s.history_scroll_y, 0, max(history_content_h - history_view.h, 0))
@@ -461,9 +459,7 @@ update_gameplay :: proc(s: ^Gameplay_State, events: []core.Event) -> core.Naviga
 						gp_moves_scroll_max(s),
 					)
 					delta := s.moves_scroll_y - previous_scroll
-					for node in s.move_nodes[:s.move_node_count] {
-						s.tree.nodes[node].rect.y -= delta
-					}
+					core.ui_scroll_nodes_by(&s.tree, s.move_nodes[:s.move_node_count], delta)
 				} else if shared.contains_point(gp_history_view_rect(s.origin_x), position) {
 					s.history_scroll_y = clamp(
 						s.history_scroll_y - input.wheel * GP_SCROLL_STEP,
@@ -762,9 +758,7 @@ gp_update_scrollbar_drag :: proc(s: ^Gameplay_State, pointer_y: f32) {
 gp_set_moves_scroll :: proc(s: ^Gameplay_State, offset: f32) {
 	previous := s.moves_scroll_y
 	s.moves_scroll_y = clamp(offset, 0, gp_moves_scroll_max(s))
-	for node in s.move_nodes[:s.move_node_count] {
-		s.tree.nodes[node].rect.y -= s.moves_scroll_y - previous
-	}
+	core.ui_scroll_nodes_by(&s.tree, s.move_nodes[:s.move_node_count], s.moves_scroll_y - previous)
 }
 
 @(private = "file")
@@ -992,7 +986,7 @@ gp_draw_move_card :: proc(v: ^Gp_View, eq: ^Equation, index: int) {
 	x := r.x + 16
 	tag_y := r.y + (compact ? 14 : 18)
 	title_y := r.y + (compact ? 36 : 43)
-	preview_y := r.y + (compact ? 64 : 72)
+	rule_y := r.y + (compact ? 64 : 72)
 
 	buf: [16]u8
 	if workspace_is_recommended(w, index) {
@@ -1006,9 +1000,10 @@ gp_draw_move_card :: proc(v: ^Gp_View, eq: ^Equation, index: int) {
 
 	title := label_str(&view.title)
 	gp_text(v, title, x, title_y, 17, GP_TEXT, s.fonts.ui)
-	preview := label_str(&view.preview)
-	preview_size := gp_fit(v, preview, 16, r.w - 32, 11, s.fonts.math)
-	gp_text(v, preview, x, preview_y, preview_size, GP_AMBER, s.fonts.math)
+	gp_text(v, label_str(&view.rule), x, rule_y, 10, GP_AMBER, s.fonts.math)
+	if view.rule_2.len > 0 {
+		gp_text(v, label_str(&view.rule_2), x, rule_y + 16, 10, GP_AMBER, s.fonts.math)
+	}
 	if !compact {
 		gp_text(v, label_str(&view.hint), x, r.y + 102, 11, GP_MUTED, s.fonts.ui)
 	}
@@ -1121,12 +1116,13 @@ gp_draw_preview :: proc(v: ^Gp_View, p: shared.Rect, solved: bool) {
 	case solved:
 		heading = "TARGET REACHED"
 		result = format_equation(workspace_current(w), rbuf[:])
-	case w.moves.count > 0 && w.selected_move < w.moves.count:
-		view = describe_move(workspace_current(w), w.moves.items[w.selected_move])
+	case w.moves.count >  0 && w.selected_move < w.moves.count:
+		move := w.moves.items[w.selected_move]
+		view = describe_move(workspace_current(w), move)
 		heading = label_str(&view.heading)
 		if preview, ok := workspace_preview(w); ok { result = format_equation(preview, rbuf[:]) }
 		show_note = true
-		enabled = !s.paused
+		enabled = !s.paused && w.selection != nil
 	case: heading = "NO VALID MOVE"
 	}
 

@@ -171,7 +171,47 @@ given_the_start_formula_when_listing_moves_then_only_distribute_3_is_offered :: 
 
 	testing.expect_value(t, moves.count, 1)
 	testing.expect_value(t, moves.items[0].kind, Move_Kind.Distribute)
-	expect_label(t, title_of(eq, moves.items[0]), "Distribute 3")
+	expect_label(t, title_of(eq, moves.items[0]), "Distributive property")
+}
+
+@(test)
+given_a_distributive_move_when_described_then_its_title_names_the_general_transformation :: proc(
+	t: ^testing.T,
+) {
+	eq := parse_ok(t, START)
+	moves := valid_moves(eq)
+	expect_label(t, describe_move(eq, moves.items[0]).title, "Distributive property")
+}
+
+@(test)
+given_expression_tokens_when_each_term_is_selected_then_all_valid_moves_for_that_term_are_listed :: proc(
+	t: ^testing.T,
+) {
+	eq := parse_ok(t, START)
+	tokens := tokenize(eq)
+	distributable_term := tokens.items[0].term
+
+	for i in 0 ..< tokens.count {
+		term := tokens.items[i].term
+		if term == NO_EXPR { continue }
+
+		already_checked := false
+		for previous in 0 ..< i {
+			if tokens.items[previous].term == term {
+				already_checked = true
+				break
+			}
+		}
+		if already_checked { continue }
+
+		moves := valid_moves(eq, term)
+		if term == distributable_term {
+			testing.expect_value(t, moves.count, 1)
+			testing.expect_value(t, moves.items[0].kind, Move_Kind.Distribute)
+		} else {
+			testing.expect_value(t, moves.count, 0)
+		}
+	}
 }
 
 @(test)

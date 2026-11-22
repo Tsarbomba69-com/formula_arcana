@@ -26,7 +26,9 @@ entry_label :: proc(w: ^Workspace, index: int, note: bool) -> string {
 // Plays the reference path: Distribute 3 → Combine constants (the screenshot state).
 @(private = "file")
 reach_reference_state :: proc(t: ^testing.T, w: ^Workspace) {
+	workspace_toggle_term(w, tokenize(workspace_current(w)).items[0].term)
 	testing.expect(t, workspace_apply(w), "Distribute 3 should apply")
+	workspace_toggle_term(w, tokenize(workspace_current(w)).items[3].term)
 	testing.expect(t, workspace_apply(w), "Combine constants should apply")
 }
 
@@ -61,6 +63,19 @@ given_a_fresh_workspace_when_inspected_then_the_first_move_is_selected_and_recom
 }
 
 @(test)
+given_no_expression_token_is_selected_when_apply_is_requested_then_no_move_is_committed :: proc(
+	t: ^testing.T,
+) {
+	w := open(t)
+
+	testing.expect(t, w.selection == nil, "the workspace starts without an expression selection")
+	testing.expect(t, !workspace_apply(&w), "applying requires an explicitly selected expression token")
+	testing.expect_value(t, workspace_step(&w), 0)
+	testing.expect_value(t, w.entry_count, 1)
+	current_is(t, &w, START)
+}
+
+@(test)
 given_an_unparsable_start_when_the_workspace_opens_then_invalid_start_is_reported :: proc(
 	t: ^testing.T,
 ) {
@@ -85,6 +100,7 @@ given_the_start_when_distribute_is_applied_then_history_gains_a_distribute_entry
 	t: ^testing.T,
 ) {
 	w := open(t)
+	workspace_toggle_term(&w, tokenize(workspace_current(&w)).items[0].term)
 
 	testing.expect(t, workspace_apply(&w), "apply should succeed")
 
@@ -263,9 +279,11 @@ given_the_reference_state_when_subtract_2x_then_add_4_are_applied_then_x_equals_
 	w := open(t)
 	reach_reference_state(t, &w)
 
+	workspace_toggle_term(&w, tokenize(workspace_current(&w)).items[5].term)
 	testing.expect(t, workspace_apply(&w), "Subtract 2x (recommended, selected by default)")
 	current_is(t, &w, "x − 4 = 17")
 	testing.expect(t, !workspace_solved(&w), "not solved yet")
+	workspace_toggle_term(&w, tokenize(workspace_current(&w)).items[2].term)
 	testing.expect(t, workspace_apply(&w), "Add 4")
 
 	current_is(t, &w, "x = 21")
@@ -278,7 +296,9 @@ given_the_reference_state_when_subtract_2x_then_add_4_are_applied_then_x_equals_
 given_a_solved_workspace_when_apply_is_requested_then_it_is_rejected :: proc(t: ^testing.T) {
 	w := open(t)
 	reach_reference_state(t, &w)
+	workspace_toggle_term(&w, tokenize(workspace_current(&w)).items[5].term)
 	_ = workspace_apply(&w)
+	workspace_toggle_term(&w, tokenize(workspace_current(&w)).items[2].term)
 	_ = workspace_apply(&w)
 
 	testing.expect(t, !workspace_apply(&w), "nothing left to apply")
@@ -289,7 +309,9 @@ given_a_solved_workspace_when_apply_is_requested_then_it_is_rejected :: proc(t: 
 given_a_solved_workspace_when_undo_is_requested_then_it_is_playable_again :: proc(t: ^testing.T) {
 	w := open(t)
 	reach_reference_state(t, &w)
+	workspace_toggle_term(&w, tokenize(workspace_current(&w)).items[5].term)
 	_ = workspace_apply(&w)
+	workspace_toggle_term(&w, tokenize(workspace_current(&w)).items[2].term)
 	_ = workspace_apply(&w)
 
 	testing.expect(t, workspace_undo(&w), "undo from a solved state")

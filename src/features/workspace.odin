@@ -113,12 +113,13 @@ workspace_step_selection :: proc(w: ^Workspace, delta: int) {
 
 // ---- Mutation --------------------------------------------------------------------------
 
-// Commits the selected move. Clears the term selection and resets selected_move to 0
-// (node ids change after a move, so a stale selection would point at the wrong term).
-// false when: no move is selected, the puzzle is solved, or the history is full.
+// Commits the selected move only when a term is selected. Clears the term selection
+// and resets selected_move to 0 because node ids change after a move.
+// false when no term or move is selected, the puzzle is solved, or history is full.
 workspace_apply :: proc(w: ^Workspace) -> bool {
 	if w.entry_count <= 0 || w.entry_count >= MAX_HISTORY { return false }
 	if workspace_solved(w) { return false }
+	if w.selection == nil { return false }
 	if !workspace_has_selected_move(w) { return false }
 
 	before := workspace_current(w)
@@ -129,7 +130,7 @@ workspace_apply :: proc(w: ^Workspace) -> bool {
 	view := describe_move(before, move)
 	w.entries[w.entry_count] = {
 		equation = after,
-		title    = view.title,
+		title    = view.action,
 		note     = explain_move(before, move),
 	}
 	w.entry_count += 1

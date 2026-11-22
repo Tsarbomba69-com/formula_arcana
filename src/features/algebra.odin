@@ -28,6 +28,8 @@ MAX_TERMS :: 16
 LABEL_CAP :: 96
 
 EQUIVALENCE_NOTE :: "Equivalent for every x ∈ ℝ"
+DISTRIBUTIVE_ADDITION_RULE :: "Addition: a(b + c) = ab + ac"
+DISTRIBUTIVE_SUBTRACTION_RULE :: "Subtraction: a(b - c) = ab - ac"
 
 @(private = "file")
 MINUS :: "−" // U+2212
@@ -1179,7 +1181,10 @@ apply_move :: proc(eq: Equation, m: Move) -> (result: Equation, ok: bool) {
 
 // What the UI shows for one move.
 Move_View :: struct {
-	title:   Label, // "Subtract 2x"
+	title:   Label, // "Distributive property" or "Subtract 2x"
+	action:  Label, // concrete operation recorded in history, e.g. "Distribute 3"
+	rule:    Label, // general mathematical rule represented by the move
+	rule_2:  Label, // second form when a property has multiple cases
 	preview: Label, // raw, unsimplified: "3x − 4 − 2x = 2x + 17 − 2x"
 	hint:    Label, // "Cancel the variable on the right."
 	heading: Label, // "AFTER SUBTRACTING 2x" (caps, variable stays lower-case)
@@ -1221,7 +1226,29 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 		w_str(&w, "Divide by ")
 		w_signed(&w, m.operand.coef)
 	}
-	label_set(&view.title, w_text(&w))
+	label_set(&view.action, w_text(&w))
+	w.n = 0
+	if m.kind == .Distribute {
+		w_str(&w, "Distributive property")
+		label_set(&view.title, w_text(&w))
+	} else {
+		label_set(&view.title, label_str(&view.action))
+	}
+	w.n = 0
+	switch m.kind {
+	case .Distribute:
+		w_str(&w, DISTRIBUTIVE_ADDITION_RULE)
+		label_set(&view.rule, w_text(&w))
+		w.n = 0
+		w_str(&w, DISTRIBUTIVE_SUBTRACTION_RULE)
+		label_set(&view.rule_2, w_text(&w))
+	case .Combine_Constants: w_str(&w, "a + b = c")
+	case .Combine_Like_Terms: w_str(&w, "ax + bx = (a + b)x")
+	case .Add_To_Both: w_str(&w, "a = b  →  a + c = b + c")
+	case .Subtract_From_Both: w_str(&w, "a = b  →  a − c = b − c")
+	case .Divide_Both: w_str(&w, "a = b  →  a ÷ c = b ÷ c")
+	}
+	if m.kind != .Distribute { label_set(&view.rule, w_text(&w)) }
 
 	// ---- heading ----
 	w.n = 0

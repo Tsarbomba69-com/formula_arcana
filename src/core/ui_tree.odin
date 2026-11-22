@@ -261,6 +261,15 @@ ui_scroll_to :: proc(
 	return state.offsets[viewport_node]
 }
 
+// Applies a vertical scroll delta to an arbitrary set of tree nodes.
+ui_scroll_nodes_by :: proc(t: ^UI_Tree, nodes: []int, delta: f32) {
+	if !ui_is_finite(delta) { return }
+	for node in nodes {
+		assert(node >= 0 && node < t.count)
+		t.nodes[node].rect.y -= delta
+	}
+}
+
 @(private)
 ui_is_finite :: proc(value: f32) -> bool {
 	return value == value && abs(value) < 3.402823466e+38
