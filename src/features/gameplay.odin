@@ -2,6 +2,7 @@ package features
 
 import "../core"
 import "../shared"
+import "core:fmt"
 import "core:log"
 import "core:math"
 
@@ -221,6 +222,7 @@ Gameplay_State :: struct {
 	scroll_drag_start: f32,
 	tile_nodes:        [MAX_TOKENS]int, // index == token index
 	tile_node_count:   int,
+	selected_operator: int, // token index; independent of Token.term
 	apply_node:        int,
 	undo_node:         int,
 	restart_node:      int,
@@ -325,6 +327,7 @@ run_info_for :: proc(progress: core.Progress) -> Run_Info {
 init_gameplay :: proc(ctx: ^Context, puzzle: Puzzle, run: Run_Info) -> (state: Gameplay_State) {
 	state.puzzle = puzzle
 	state.run = run
+	state.selected_operator = -1
 
 	workspace, err := workspace_init(puzzle.start, puzzle.goal)
 	if err == .None {
@@ -529,8 +532,20 @@ gameplay_activate :: proc(s: ^Gameplay_State, node: int) {
 	for i in 0 ..< s.tile_node_count {
 		if node == s.tile_nodes[i] {
 			token := s.tokens.items[i]
-			if token.term !=
-			   NO_EXPR { workspace_toggle_term(&s.workspace, token.term); gameplay_rebuild(s) }
+			if token.term != NO_EXPR {
+				s.selected_operator = -1
+				workspace_toggle_term(&s.workspace, token.term)
+				gameplay_rebuild(s)
+			} else if token.kind == .Operator && label_str(&token.text) != "=" {
+				if s.selected_operator == i {
+					s.selected_operator = -1
+				} else {
+					s.selected_operator = i
+				}
+				// Operation and term scopes are mutually exclusive.
+				s.workspace.selection = nil
+				gameplay_rebuild(s)
+			}
 			return
 		}
 	}
@@ -1034,8 +1049,13 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 		s.fonts.mono,
 		.End,
 	)
-	hint := "Select a term to inspect its valid transformations."
+	hint := "Select a term or operator to inspect it."
 	if w.selection != nil { hint = "Click the term again to return to the whole equation." }
+	if s.selected_operator >= 0 {
+		token := s.tokens.items[s.selected_operator]
+		hint_buf: [64]u8
+		hint = fmt.bprintf(hint_buf[:], "Selected operation: %s · click again to clear", label_str(&token.text))
+	}
 	gp_text(v, hint, x, p.y + 56, 13, GP_TEXT, s.fonts.ui)
 
 	// Formula box + tiles
@@ -1054,7 +1074,7 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 	gp_box(v, {p.x + 272, ly - 12, 24, 24}, GP_TILE_OP, GP_TILE_OP)
 	gp_text(v, "+", p.x + 284, ly, 15, GP_OP_TEXT, s.fonts.math, .Center)
 	gp_text(v, "Operator", p.x + 304, ly, 12, GP_MUTED, s.fonts.ui)
-	scope := w.selection != nil ? "SCOPE: TERM" : "SCOPE: EQUATION"
+	scope := w.selection != nil ? "SCOPE: TERM" : (s.selected_operator >= 0 ? "SCOPE: OPERATION" : "SCOPE: EQUATION")
 	gp_text(v, scope, p.x + 634, ly, 10, GP_TEAL, s.fonts.mono, .End)
 	gp_hline(v, x, p.y + 261, p.w - 48, GP_DIVIDER)
 
@@ -1073,8 +1093,8 @@ gp_draw_tiles :: proc(v: ^Gp_View) {
 		text := label_str(&token.text)
 		cx, cy := r.x + r.w / 2, r.y + r.h / 2
 
-		selectable := token.term != NO_EXPR
-		selected := false
+	selectable := token.term != NO_EXPR || (token.kind == .Operator && label_str(&token.text) != "=")
+		selected := s.selected_operator == i
 		if sel, ok := w.selection.?; ok && selectable { selected = token.term == sel }
 		vis := core.button_visual(s.ix, node)
 		hovered := selectable && (vis == .Hover || vis == .Pressed)

@@ -228,7 +228,7 @@ given_the_start_formula_when_gameplay_opens_then_the_panels_show_the_initial_sta
 			"CURRENT FORMULA",
 			"STEP 00",
 			"SCOPE: EQUATION",
-			"Select a term to inspect its valid transformations.",
+			"Select a term or operator to inspect it.",
 			"TRANSFORMATION HISTORY",
 			"Every step, preserved.",
 			"0 MOVES",
@@ -682,16 +682,32 @@ given_a_term_is_selected_when_the_same_tile_is_clicked_again_then_scope_returns_
 }
 
 @(test)
-given_an_operator_tile_when_clicked_then_scope_does_not_change :: proc(t: ^testing.T) {
+given_an_addition_operator_when_clicked_then_it_is_selected_independently_of_its_term :: proc(
+	t: ^testing.T,
+) {
 	ctx := gp_context()
 	state := gp_open(t, &ctx)
-	gp_reach_reference_state(&state)
+	capture: Gameplay_Test_Capture
+	plus_node := -1
+	for i in 0 ..< state.tile_node_count {
+		token := state.tokens.items[i]
+		if token.kind == .Operator && label_str(&token.text) == "+" {
+			plus_node = state.tile_nodes[i]
+			break
+		}
+	}
+	testing.expect(t, plus_node >= 0, "the formula should expose its addition operator as a tile")
+	if plus_node < 0 { return }
 
-	_ = gp_click(&state, state.tile_nodes[2]) // the "−" operator
-	_ = gp_click(&state, state.tile_nodes[4]) // the "="
+	_ = gp_click(&state, plus_node)
+	gp_draw(&state, ctx, &capture)
 
-	testing.expect(t, state.workspace.selection == nil, "operators are not selectable terms")
-	testing.expect_value(t, state.workspace.moves.count, 3)
+	testing.expect(t, state.selected_operator >= 0, "the clicked operation should be selected")
+	testing.expect(t, state.workspace.selection == nil, "operation selection should not need an expression term id")
+	gp_expect_all(t, &capture, {"SCOPE: OPERATION", "Selected operation: + · click again to clear"})
+
+	_ = gp_click(&state, plus_node)
+	testing.expect_value(t, state.selected_operator, -1)
 }
 
 // ============================================================================
