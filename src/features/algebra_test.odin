@@ -442,3 +442,51 @@ given_the_target_x_equals_21_when_checking_formulas_then_only_the_isolated_value
 	testing.expect(t, !is_solved(parse_ok(t, "21 = x"), target), "variable must be on the left")
 	testing.expect(t, !is_solved(parse_ok(t, START), target), "start is not solved")
 }
+
+// ============================================================================
+// Feature: operation selection narrows or triggers structural moves
+// ============================================================================
+
+@(test)
+given_the_start_formula_when_the_implicit_multiply_or_paren_is_selected_then_distribute_is_offered :: proc(
+	t: ^testing.T,
+) {
+	eq := parse_ok(t, START) // 3(x − 4) + 8 = 2x + 17
+
+	// Selecting "(" at index 1 targets the grouped product 3(x − 4)
+	moves := valid_moves(eq, 1)
+
+	testing.expect_value(t, moves.count, 1)
+	testing.expect_value(t, moves.items[0].kind, Move_Kind.Distribute)
+}
+
+@(test)
+given_a_distributed_formula_when_the_plus_between_constants_is_selected_then_combine_constants_is_offered :: proc(
+	t: ^testing.T,
+) {
+	eq := parse_ok(t, DISTRIBUTED) // 3x − 12 + 8 = 2x + 17
+	tokens := tokenize(eq)
+
+	// Tokens: 0:"3", 1:"x", 2:"−", 3:"12", 4:"+", 5:"8", ...
+	plus_idx := 4
+	expect_label(t, tokens.items[plus_idx].text, "+")
+
+	moves := valid_moves(eq, plus_idx)
+
+	testing.expect_value(t, moves.count, 1)
+	testing.expect_value(t, moves.items[0].kind, Move_Kind.Combine_Constants)
+}
+
+@(test)
+given_an_equation_when_the_equals_sign_is_selected_then_no_local_operation_move_is_offered :: proc(
+	t: ^testing.T,
+) {
+	eq := parse_ok(t, REFERENCE) // 3x − 4 = 2x + 17
+	tokens := tokenize(eq)
+
+	// Token 4 is "="
+	expect_label(t, tokens.items[4].text, "=")
+	moves := valid_moves(eq, 4)
+
+	testing.expect_value(t, moves.count, 0)
+}

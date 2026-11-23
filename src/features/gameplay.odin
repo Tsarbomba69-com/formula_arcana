@@ -537,13 +537,8 @@ gameplay_activate :: proc(s: ^Gameplay_State, node: int) {
 				workspace_toggle_term(&s.workspace, token.term)
 				gameplay_rebuild(s)
 			} else if token.kind == .Operator && label_str(&token.text) != "=" {
-				if s.selected_operator == i {
-					s.selected_operator = -1
-				} else {
-					s.selected_operator = i
-				}
-				// Operation and term scopes are mutually exclusive.
-				s.workspace.selection = nil
+				workspace_toggle_op(&s.workspace, i)
+				s.selected_operator = s.workspace.selected_op
 				gameplay_rebuild(s)
 			}
 			return
@@ -1054,7 +1049,11 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 	if s.selected_operator >= 0 {
 		token := s.tokens.items[s.selected_operator]
 		hint_buf: [64]u8
-		hint = fmt.bprintf(hint_buf[:], "Selected operation: %s · click again to clear", label_str(&token.text))
+		hint = fmt.bprintf(
+			hint_buf[:],
+			"Selected operation: %s · click again to clear",
+			label_str(&token.text),
+		)
 	}
 	gp_text(v, hint, x, p.y + 56, 13, GP_TEXT, s.fonts.ui)
 
@@ -1074,7 +1073,8 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 	gp_box(v, {p.x + 272, ly - 12, 24, 24}, GP_TILE_OP, GP_TILE_OP)
 	gp_text(v, "+", p.x + 284, ly, 15, GP_OP_TEXT, s.fonts.math, .Center)
 	gp_text(v, "Operator", p.x + 304, ly, 12, GP_MUTED, s.fonts.ui)
-	scope := w.selection != nil ? "SCOPE: TERM" : (s.selected_operator >= 0 ? "SCOPE: OPERATION" : "SCOPE: EQUATION")
+	scope :=
+		w.selection != nil ? "SCOPE: TERM" : (s.selected_operator >= 0 ? "SCOPE: OPERATION" : "SCOPE: EQUATION")
 	gp_text(v, scope, p.x + 634, ly, 10, GP_TEAL, s.fonts.mono, .End)
 	gp_hline(v, x, p.y + 261, p.w - 48, GP_DIVIDER)
 
@@ -1093,7 +1093,8 @@ gp_draw_tiles :: proc(v: ^Gp_View) {
 		text := label_str(&token.text)
 		cx, cy := r.x + r.w / 2, r.y + r.h / 2
 
-	selectable := token.term != NO_EXPR || (token.kind == .Operator && label_str(&token.text) != "=")
+		selectable :=
+			token.term != NO_EXPR || (token.kind == .Operator && label_str(&token.text) != "=")
 		selected := s.selected_operator == i
 		if sel, ok := w.selection.?; ok && selectable { selected = token.term == sel }
 		vis := core.button_visual(s.ix, node)
@@ -1136,13 +1137,13 @@ gp_draw_preview :: proc(v: ^Gp_View, p: shared.Rect, solved: bool) {
 	case solved:
 		heading = "TARGET REACHED"
 		result = format_equation(workspace_current(w), rbuf[:])
-	case w.moves.count >  0 && w.selected_move < w.moves.count:
+	case w.moves.count > 0 && w.selected_move < w.moves.count:
 		move := w.moves.items[w.selected_move]
 		view = describe_move(workspace_current(w), move)
 		heading = label_str(&view.heading)
 		if preview, ok := workspace_preview(w); ok { result = format_equation(preview, rbuf[:]) }
 		show_note = true
-		enabled = !s.paused && w.selection != nil
+		enabled = !s.paused && workspace_has_scope(w)
 	case: heading = "NO VALID MOVE"
 	}
 

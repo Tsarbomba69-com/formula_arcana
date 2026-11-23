@@ -33,6 +33,7 @@ DISTRIBUTIVE_SUBTRACTION_RULE :: "Subtraction: a(b - c) = ab - ac"
 
 @(private = "file")
 MINUS :: "−" // U+2212
+PLUS :: "+"
 
 // ---- Expression tree ------------------------------------------------------------
 
@@ -893,7 +894,137 @@ alg_move_touches :: proc(eq: ^Equation, m: Move, term: Expr_Id) -> bool {
 	return false
 }
 
-valid_moves :: proc(eq: Equation, selected: Maybe(Expr_Id) = nil) -> (out: Move_List) {
+// True when token `idx` and `idx + 1` on the same side are adjacent factors of an
+// implicit multiplication (e.g. `3` before `(` or `x`, or `)` before `(` or `x`).
+@(private = "file")
+alg_is_implicit_mul_at :: proc(tokens: ^Token_List, idx: int) -> bool {
+	if idx < 0 || idx + 1 >= tokens.count { return false }
+	a := tokens.items[idx]
+	b := tokens.items[idx + 1]
+	if a.side != b.side { return false }
+
+	a_text := label_str(&a.text)
+	b_text := label_str(&b.text)
+	if a_text == "=" || b_text == "=" { return false }
+
+	left_can_mul := a.kind == .Constant || a.kind == .Variable || a_text == ")"
+	right_can_mul := b.kind == .Constant || b.kind == .Variable || b_text == "("
+	return left_can_mul && right_can_mul
+}
+
+// Checks whether a selected token at `tok_idx` targets move `m`.
+@(private = "file")
+alg_token_touches_move :: proc(eq: ^Equation, tokens: ^Token_List, tok_idx: int, m: Move) -> bool {
+	if tok_idx < 0 || tok_idx >= tokens.count { return false }
+	tok := tokens.items[tok_idx]
+	if tok.side != m.side { return false }
+
+	op_text := label_str(&tok.text)
+	if op_text == "=" { return false }
+
+	// Explicit or implicit multiplication around a .Group term enables .Distribute.
+	if m.kind == .Distribute {
+		if op_text == "×" {
+			return tok.term != NO_EXPR && tok.term == m.target
+		}
+		if tok.kind == .Operator {
+			// `+` and `−` never trigger distribution.
+			return false
+		}
+		// Token is a factor/paren on an implicit multiplication boundary (e.g. `3` or `(` in `3(x − 4)`).
+		has_implicit_mul :=
+			alg_is_implicit_mul_at(tokens, tok_idx) || alg_is_implicit_mul_at(tokens, tok_idx - 1)
+		return has_implicit_mul && tok.term != NO_EXPR && tok.term == m.target
+	}
+
+	// Binary `+` or `−` between two combinable terms on the same side.
+	if tok.kind == .Operator && (op_text == "+" || op_text == MINUS) {
+		if m.kind != .Combine_Constants && m.kind != .Combine_Like_Terms {
+			return false
+		}
+		prev_term := NO_EXPR
+		for i := tok_idx - 1; i >= 0; i -= 1 {
+			if tokens.items[i].side != tok.side { break }
+			if tokens.items[i].term != NO_EXPR {
+				prev_term = tokens.items[i].term
+				break
+			}
+		}
+		next_term := NO_EXPR
+		for i := tok_idx + 1; i < tokens.count; i += 1 {
+			if tokens.items[i].side != tok.side { break }
+			if tokens.items[i].term != NO_EXPR {
+				next_term = tokens.items[i].term
+				break
+			}
+		}
+		return(
+			prev_term != NO_EXPR &&
+			next_term != NO_EXPR &&
+			alg_move_touches(eq, m, prev_term) &&
+			alg_move_touches(eq, m, next_term) \
+		)
+	}
+
+	if tok.term != NO_EXPR {
+		return alg_move_touches(eq, m, tok.term)
+	}
+	return false
+}
+
+// Does the operator token at `tok_idx` act on move `m`?
+@(private = "file")
+alg_operator_token_touches :: proc(
+	eq: ^Equation,
+	tokens: ^Token_List,
+	tok_idx: int,
+	m: Move,
+) -> bool {
+	if tok_idx < 0 || tok_idx >= tokens.count { return false }
+	tok := tokens.items[tok_idx]
+	if tok.kind != .Operator || tok.side != m.side { return false }
+
+	op_text := label_str(&tok.text)
+	if op_text == "=" { return false }
+
+	// Find the additive term immediately before and after this operator token on the same side.
+	prev_term := NO_EXPR
+	for i := tok_idx - 1; i >= 0; i -= 1 {
+		if tokens.items[i].side != tok.side { break }
+		if tokens.items[i].term != NO_EXPR {
+			prev_term = tokens.items[i].term
+			break
+		}
+	}
+	next_term := NO_EXPR
+	for i := tok_idx + 1; i < tokens.count; i += 1 {
+		if tokens.items[i].side != tok.side { break }
+		if tokens.items[i].term != NO_EXPR {
+			next_term = tokens.items[i].term
+			break
+		}
+	}
+
+	switch m.kind {
+	case .Combine_Constants, .Combine_Like_Terms:
+		// Only binary + or − between two combinable terms on the same side.
+		if op_text != "+" && op_text != MINUS { return false }
+		return(
+			prev_term != NO_EXPR &&
+			next_term != NO_EXPR &&
+			alg_move_touches(eq, m, prev_term) &&
+			alg_move_touches(eq, m, next_term) \
+		)
+	case .Distribute:
+		// Only explicit multiplication (×) can trigger distribution—never + or −.
+		if op_text != "×" { return false }
+		return prev_term != NO_EXPR && prev_term == next_term && m.target == prev_term
+	case .Add_To_Both, .Subtract_From_Both, .Divide_Both: return false
+	}
+	return false
+}
+
+valid_moves_by_expr :: proc(eq: Equation, selected: Maybe(Expr_Id) = nil) -> (out: Move_List) {
 	eq := eq
 	all := alg_all_moves(&eq)
 	term, has_term := selected.?
@@ -902,6 +1033,25 @@ valid_moves :: proc(eq: Equation, selected: Maybe(Expr_Id) = nil) -> (out: Move_
 		alg_push_move(&out, m)
 	}
 	return
+}
+
+valid_moves_by_token :: proc(eq: Equation, tok_idx: int) -> (out: Move_List) {
+	eq := eq
+	tokens := tokenize(eq)
+	if tok_idx < 0 || tok_idx >= tokens.count { return }
+
+	all := alg_all_moves(&eq)
+	for m in all.items[:all.count] {
+		if alg_token_touches_move(&eq, &tokens, tok_idx, m) {
+			alg_push_move(&out, m)
+		}
+	}
+	return
+}
+
+valid_moves :: proc {
+	valid_moves_by_expr,
+	valid_moves_by_token,
 }
 
 // ============================================================================

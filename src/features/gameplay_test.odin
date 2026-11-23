@@ -703,8 +703,16 @@ given_an_addition_operator_when_clicked_then_it_is_selected_independently_of_its
 	gp_draw(&state, ctx, &capture)
 
 	testing.expect(t, state.selected_operator >= 0, "the clicked operation should be selected")
-	testing.expect(t, state.workspace.selection == nil, "operation selection should not need an expression term id")
-	gp_expect_all(t, &capture, {"SCOPE: OPERATION", "Selected operation: + · click again to clear"})
+	testing.expect(
+		t,
+		state.workspace.selection == nil,
+		"operation selection should not need an expression term id",
+	)
+	gp_expect_all(
+		t,
+		&capture,
+		{"SCOPE: OPERATION", "Selected operation: + · click again to clear"},
+	)
 
 	_ = gp_click(&state, plus_node)
 	testing.expect_value(t, state.selected_operator, -1)

@@ -69,7 +69,11 @@ given_no_expression_token_is_selected_when_apply_is_requested_then_no_move_is_co
 	w := open(t)
 
 	testing.expect(t, w.selection == nil, "the workspace starts without an expression selection")
-	testing.expect(t, !workspace_apply(&w), "applying requires an explicitly selected expression token")
+	testing.expect(
+		t,
+		!workspace_apply(&w),
+		"applying requires an explicitly selected expression token",
+	)
 	testing.expect_value(t, workspace_step(&w), 0)
 	testing.expect_value(t, w.entry_count, 1)
 	current_is(t, &w, START)

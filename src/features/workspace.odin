@@ -23,7 +23,8 @@ Workspace :: struct {
 	start, target: Equation,
 	entries:       [MAX_HISTORY]History_Entry,
 	entry_count:   int,
-	selection:     Maybe(Expr_Id), // selected term; nil == scope "whole equation"
+	selection:     Maybe(Expr_Id), // selected term; nil == not a term scope
+	selected_op:   int, // selected operator token index; -1 == not an op scope
 	moves:         Move_List, // valid moves for the current scope
 	selected_move: int, // index into `moves`
 }
@@ -92,6 +93,7 @@ workspace_toggle_term :: proc(w: ^Workspace, term: Expr_Id) {
 		w.selection = nil
 	} else {
 		w.selection = term
+		w.selected_op = -1
 	}
 	w.selected_move = 0
 	workspace_refresh(w)
@@ -113,13 +115,30 @@ workspace_step_selection :: proc(w: ^Workspace, delta: int) {
 
 // ---- Mutation --------------------------------------------------------------------------
 
+workspace_has_scope :: proc(w: ^Workspace) -> bool {
+	return w.selection != nil || w.selected_op >= 0
+}
+
+// Selecting the already-selected operator token deselects it and clears any term selection.
+workspace_toggle_op :: proc(w: ^Workspace, op_token_idx: int) {
+	if op_token_idx < 0 { return }
+	if w.selected_op == op_token_idx {
+		w.selected_op = -1
+	} else {
+		w.selected_op = op_token_idx
+		w.selection = nil
+	}
+	w.selected_move = 0
+	workspace_refresh(w)
+}
+
 // Commits the selected move only when a term is selected. Clears the term selection
 // and resets selected_move to 0 because node ids change after a move.
 // false when no term or move is selected, the puzzle is solved, or history is full.
 workspace_apply :: proc(w: ^Workspace) -> bool {
 	if w.entry_count <= 0 || w.entry_count >= MAX_HISTORY { return false }
 	if workspace_solved(w) { return false }
-	if w.selection == nil { return false }
+	if !workspace_has_scope(w) { return false }
 	if !workspace_has_selected_move(w) { return false }
 
 	before := workspace_current(w)
@@ -136,18 +155,19 @@ workspace_apply :: proc(w: ^Workspace) -> bool {
 	w.entry_count += 1
 
 	w.selection = nil
+	w.selected_op = -1
 	w.selected_move = 0
 	workspace_refresh(w)
 	return true
 }
 
-// Forgets the last move. Works from a solved state too (the puzzle becomes playable again).
 workspace_undo :: proc(w: ^Workspace) -> bool {
 	if w.entry_count <= 1 { return false } 	// the initial formula cannot be undone
 
 	w.entry_count -= 1
 	w.entries[w.entry_count] = {}
 	w.selection = nil
+	w.selected_op = -1
 	w.selected_move = 0
 	workspace_refresh(w)
 	return true
@@ -161,6 +181,7 @@ workspace_restart :: proc(w: ^Workspace) {
 	label_set(&w.entries[0].note, INITIAL_NOTE)
 	w.entry_count = 1
 	w.selection = nil
+	w.selected_op = -1
 	w.selected_move = 0
 	workspace_refresh(w)
 }
@@ -178,6 +199,10 @@ workspace_has_selected_move :: proc(w: ^Workspace) -> bool {
 workspace_refresh :: proc(w: ^Workspace) {
 	w.moves = {}
 	if w.entry_count <= 0 || workspace_solved(w) { return }
-	w.moves = valid_moves(workspace_current(w), w.selection)
+	if w.selected_op >= 0 {
+		w.moves = valid_moves_by_token(workspace_current(w), w.selected_op)
+	} else {
+		w.moves = valid_moves(workspace_current(w), w.selection)
+	}
 	if w.selected_move >= w.moves.count { w.selected_move = 0 }
 }
