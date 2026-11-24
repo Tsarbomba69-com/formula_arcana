@@ -111,6 +111,9 @@ cmd_test() {
 
     echo "[odin] Running feature tests..."
     odin test "${SRC_DIR}/features" ${VET_FLAGS}
+
+    echo "[odin] Running algebra tests..."
+    odin test "${SRC_DIR}/algebra" ${VET_FLAGS}
 }
 
 cmd_clean() {
