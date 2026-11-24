@@ -34,7 +34,7 @@ parse_equation :: proc(src: string) -> (eq: Equation, err: Parse_Error) {
 	p := Parser {
 		source = src,
 		tokens = tokens,
-		eq = &eq,
+		eq     = &eq,
 	}
 	eq.lhs = p_expr(&p)
 	if p.err != .None { return {}, p.err }

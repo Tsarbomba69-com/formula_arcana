@@ -370,6 +370,9 @@ given_two_moves_were_applied_when_the_screen_draws_then_it_matches_the_reference
 	ctx := gp_context()
 	state := gp_open(t, &ctx)
 	gp_reach_reference_state(&state)
+	// The second applied move starts the token magnet animation; inspect the
+	// settled reference layout after it completes.
+	gp_tick(&state, 1.0)
 	capture: Gameplay_Test_Capture
 	gp_draw(&state, ctx, &capture)
 
@@ -380,7 +383,6 @@ given_two_moves_were_applied_when_the_screen_draws_then_it_matches_the_reference
 		gp_has_in_order(&capture, {"3", "x", "−", "4", "=", "2", "x", "+", "17"}),
 		"formula tiles should read 3 x − 4 = 2 x + 17",
 	)
-
 	// Left panel: three cards.
 	gp_expect_all(
 		t,

@@ -106,10 +106,14 @@ Move_Kind :: enum {
 	Add_To_Both,
 	Subtract_From_Both,
 	Divide_Both,
+	Multiply_Both, // player-chosen: every term of both sides
+	Apply_Function, // player-chosen: the function wraps each complete side
 }
 
+Move_Kinds :: bit_set[Move_Kind]
+
 // 2x == {2, true}; 4 == {4, false}. Balance moves: always the magnitude added / subtracted.
-// Divide_Both: the (signed) coefficient divided by. Distribute: the signed multiplier.
+// Divide_Both / Multiply_Both: the (signed) coefficient divided / multiplied by. Distribute: the signed multiplier.
 Term :: struct {
 	coef:    i64,
 	has_var: bool,
@@ -136,4 +140,68 @@ Move_View :: struct {
 	preview: Label, // raw, unsimplified: "3x − 4 − 2x = 2x + 17 − 2x"
 	hint:    Label, // "Cancel the variable on the right."
 	heading: Label, // "AFTER SUBTRACTING 2x" (caps, variable stays lower-case)
+}
+
+// How safe a move is. Zero value is Equivalent, so an untouched History_Entry reads as "equivalent".
+Equivalence :: enum {
+	Equivalent,
+	Not_Equivalent, // information lost (e.g. multiply by 0)
+	May_Introduce_Extra_Solutions, // e.g. squaring both sides
+}
+
+Move_Error :: enum {
+	None,
+	Not_Applicable, // zero-value / overflowed equation, or unsupported request
+	Division_By_Zero,
+	Unproven_Substitution, // the value is not backed by a known equality
+}
+
+// ---- Player-chosen transformations ---------------------------------------------
+
+Function_Kind :: enum {
+	Square,
+}
+
+// A request chosen by the player. Value-typed and comparable with ==.
+// Accepted kinds: Add_To_Both, Subtract_From_Both, Multiply_Both, Divide_Both,
+// Apply_Function. Other Move_Kinds are step moves and yield .Not_Applicable.
+Transformation :: struct {
+	kind:     Move_Kind,
+	operand:  Term, // Add / Subtract / Multiply / Divide (constants: has_var == false)
+	function: Function_Kind, // Apply_Function
+}
+
+Transform_Result :: struct {
+	equation:    Equation, // identical to the input whenever error != .None
+	equivalence: Equivalence, // meaningful only when error == .None
+	error:       Move_Error,
+}
+
+// An expression with no "=". ASSUMPTION: reuses the Equation node arena; the root
+// lives in `eq.lhs` and `eq.rhs` stays NO_EXPR.
+Expression :: struct {
+	eq: Equation,
+}
+
+// "Replace `variable` with `value`."
+Substitution :: struct {
+	variable: u8,
+	value:    i64,
+}
+
+Substitution_Result :: struct {
+	expression: Expression, // identical to the input whenever error != .None
+	equality:   Equation, // the known equality that justified it ("x = 3"); zero-value on error
+	error:      Move_Error,
+}
+
+// Token-to-token provenance for visualizing a rewrite in the presentation layer.
+Move_Animation_Pair :: struct {
+	source_token:      int,
+	destination_token: int,
+}
+
+Move_Animation_Map :: struct {
+	pairs: [MAX_TOKENS]Move_Animation_Pair,
+	count: int,
 }

@@ -134,7 +134,7 @@ lex_source :: proc(src: string) -> (out: Source_Token_List, err: Parse_Error) {
 		case (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z'):
 			kind = .Letter
 			i += 1
-		case b == '+' :
+		case b == '+':
 			kind = .Plus
 			i += 1
 		case b == '-':
@@ -158,17 +158,22 @@ lex_source :: proc(src: string) -> (out: Source_Token_List, err: Parse_Error) {
 			depth -= 1
 			if depth < 0 { return {}, .Unbalanced_Parens }
 			i += 1
-		case:
-			return {}, .Unexpected_Character
+		case: return {}, .Unexpected_Character
 		}
 		if out.count >= len(out.items) { return {}, .Too_Many_Nodes }
-		out.items[out.count] = {kind = kind, span = {start, i}}
+		out.items[out.count] = {
+			kind = kind,
+			span = {start, i},
+		}
 		out.count += 1
 	}
 	if out.count == 0 { return {}, .Empty }
 	if depth != 0 { return {}, .Unbalanced_Parens }
 	if out.count >= len(out.items) { return {}, .Too_Many_Nodes }
-	out.items[out.count] = {kind = .End, span = {len(src), len(src)}}
+	out.items[out.count] = {
+		kind = .End,
+		span = {len(src), len(src)},
+	}
 	out.count += 1
 	return out, .None
 }

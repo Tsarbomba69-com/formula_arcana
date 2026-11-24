@@ -110,3 +110,86 @@ alg_analyze :: proc(eq: ^Equation, side: Side) -> (info: Side_Info) {
 
 // ============================================================================
 // Moves
+
+// Builds animation provenance from the terms a move actually rewrites. Unlike
+// text matching, this keeps a same-looking token when its owning term changed.
+move_animation_map :: proc(source, result: Equation, move: Move) -> (mapping: Move_Animation_Map) {
+	wanted: Term_Kind
+	#partial switch move.kind {
+	case .Combine_Constants: wanted = .Const
+	case .Combine_Like_Terms: wanted = .Var
+	case .Add_To_Both, .Subtract_From_Both: wanted = move.operand.has_var ? .Var : .Const
+	case: return
+	}
+
+	source_eq, result_eq := source, result
+	source_sides, result_sides: [2]Side_Info
+	for side in Side {
+		source_sides[side] = alg_analyze(&source_eq, side)
+		result_sides[side] = alg_analyze(&result_eq, side)
+	}
+
+	for side in Side {
+		if (move.kind == .Combine_Constants || move.kind == .Combine_Like_Terms) &&
+		   side != move.side {
+			continue
+		}
+		destination_term := NO_EXPR
+		for term in result_sides[side].items[:result_sides[side].count] {
+			if term.kind == wanted {
+				destination_term = term.node
+				break
+			}
+		}
+		if destination_term == NO_EXPR &&
+		   (move.kind == .Add_To_Both || move.kind == .Subtract_From_Both) {
+			other_side := side == .Left ? Side.Right : Side.Left
+			for term in result_sides[other_side].items[:result_sides[other_side].count] {
+				if term.kind == wanted {
+					destination_term = term.node
+					break
+				}
+			}
+		}
+		if destination_term == NO_EXPR { continue }
+		destination_token := alg_animation_term_token(&result_eq, destination_term, side, wanted)
+		if destination_token < 0 {
+			other_side := side == .Left ? Side.Right : Side.Left
+			destination_token = alg_animation_term_token(
+				&result_eq,
+				destination_term,
+				other_side,
+				wanted,
+			)
+		}
+		if destination_token < 0 { continue }
+
+		for term in source_sides[side].items[:source_sides[side].count] {
+			if term.kind != wanted { continue }
+			source_token := alg_animation_term_token(&source_eq, term.node, side, wanted)
+			if source_token < 0 { continue }
+			if mapping.count < len(mapping.pairs) {
+				mapping.pairs[mapping.count] = {source_token, destination_token}
+				mapping.count += 1
+			}
+		}
+	}
+	return
+}
+
+@(private = "package")
+alg_animation_term_token :: proc(
+	eq: ^Equation,
+	term: Expr_Id,
+	side: Side,
+	kind: Term_Kind,
+) -> int {
+	tokens := tokenize(eq^)
+	for i in 0 ..< tokens.count {
+		token := tokens.items[i]
+		if token.term != term || token.side != side { continue }
+		if kind == .Const && token.kind == .Constant { return i }
+		if kind == .Var && token.kind == .Variable { return i }
+	}
+	return -1
+}

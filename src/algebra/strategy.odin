@@ -98,6 +98,7 @@ alg_all_moves :: proc(eq: ^Equation) -> (moves: Move_List) {
 alg_move_touches :: proc(eq: ^Equation, m: Move, term: Expr_Id) -> bool {
 	switch m.kind {
 	case .Distribute, .Add_To_Both, .Subtract_From_Both: return m.target == term
+	case .Multiply_Both, .Apply_Function: return false // player requests, never offered as steps
 	case .Combine_Constants, .Combine_Like_Terms:
 		info := alg_analyze(eq, m.side)
 		want: Term_Kind = m.kind == .Combine_Constants ? .Const : .Var
@@ -239,7 +240,8 @@ alg_operator_token_touches :: proc(
 		// Only explicit multiplication (×) can trigger distribution—never + or −.
 		if op_text != "×" { return false }
 		return prev_term != NO_EXPR && prev_term == next_term && m.target == prev_term
-	case .Add_To_Both, .Subtract_From_Both, .Divide_Both: return false
+	case .Add_To_Both, .Subtract_From_Both, .Divide_Both, .Multiply_Both, .Apply_Function:
+		return false
 	}
 	return false
 }
@@ -272,4 +274,23 @@ valid_moves_by_token :: proc(eq: Equation, tok_idx: int) -> (out: Move_List) {
 valid_moves :: proc {
 	valid_moves_by_expr,
 	valid_moves_by_token,
+}
+
+// ============================================================================
+// Player-chosen transformations: what is ALLOWED (as opposed to recommended).
+//
+// valid_moves / alg_all_moves answer "what do we suggest?". The procs below
+// answer "what may the player do?" and must never consult the recommender.
+// ============================================================================
+
+// Every kind the player may pick for `eq`. Operands are free, so legality of a
+// concrete request is decided by check_transformation. Empty for a zero-value
+// or overflowed equation.
+applicable_kinds :: proc(eq: Equation) -> Move_Kinds {
+	unimplemented()
+}
+
+// .None == the request is available. Pure: never mutates, never consults recommendations.
+check_transformation :: proc(eq: Equation, t: Transformation) -> Move_Error {
+	unimplemented()
 }

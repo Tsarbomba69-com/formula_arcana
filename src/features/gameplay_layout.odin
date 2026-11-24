@@ -122,18 +122,10 @@ layout_gameplay :: proc(s: ^Gameplay_State, ctx: ^Context) {
 	s.history_scroll_y = clamp(s.history_scroll_y, 0, max(history_content_h - history_view.h, 0))
 	box := gp_rect_formula_box(s.origin_x)
 	if s.tile_node_count > 0 {
-		gap := GP_TILE_GAP
-		available := box.w - 2 * GP_TILE_SIDE_INSET - f32(s.tile_node_count - 1) * gap
-		tile_w := available / f32(s.tile_node_count)
+		tile_w := gp_formula_tile_width(box, s.tile_node_count)
 		s.tile_font_size = clamp(tile_w * GP_TILE_WIDTH_FACTOR, GP_TILE_FONT_MIN, GP_TILE_FONT_MAX)
-		start_x := box.x + GP_TILE_SIDE_INSET
 		for i in 0 ..< s.tile_node_count {
-			s.tree.nodes[s.tile_nodes[i]].rect = {
-				start_x + f32(i) * (tile_w + gap),
-				box.y + GP_TILE_TOP_INSET,
-				tile_w,
-				GP_TILE_H,
-			}
+			s.tree.nodes[s.tile_nodes[i]].rect = gp_formula_tile_rect(box, s.tile_node_count, i)
 		}
 	}
 	s.tree.nodes[s.apply_node].rect = gp_rect_apply(s.origin_x)
@@ -176,6 +168,18 @@ gameplay_sync_selection :: proc(s: ^Gameplay_State) {
 			}
 		}
 	}
+}
+
+gp_formula_tile_width :: proc(box: shared.Rect, count: int) -> f32 {
+	if count <= 0 { return 0 }
+	available := box.w - 2 * GP_TILE_SIDE_INSET - f32(count - 1) * GP_TILE_GAP
+	return available / f32(count)
+}
+
+gp_formula_tile_rect :: proc(box: shared.Rect, count, index: int) -> shared.Rect {
+	tile_w := gp_formula_tile_width(box, count)
+	x := box.x + GP_TILE_SIDE_INSET + f32(index) * (tile_w + GP_TILE_GAP)
+	return {x, box.y + GP_TILE_TOP_INSET, tile_w, GP_TILE_H}
 }
 
 // ============================================================================

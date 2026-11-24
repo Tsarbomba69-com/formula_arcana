@@ -239,6 +239,8 @@ alg_perform :: proc(eq: ^Equation, m: Move) -> (out: Equation, ok: bool) {
 		left = alg_normalize(left.items[:left.count], name)
 		right = alg_normalize(right.items[:right.count], name)
 
+	case .Multiply_Both, .Apply_Function: return eq^, false // player requests go through apply_transformation
+
 	case .Divide_Both:
 		a := m.operand.coef
 		if a == 0 { return eq^, false }
@@ -265,4 +267,36 @@ apply_move :: proc(eq: Equation, m: Move) -> (result: Equation, ok: bool) {
 	out, built := alg_perform(&eq, m)
 	if !built { return eq, false }
 	return out, true
+}
+
+// ============================================================================
+// Player-chosen transformations: performing them.
+// Unlike apply_move, nothing here checks the recommender (alg_all_moves).
+// Replaces apply_scalar_to_both / apply_add_to_both / apply_subtract_from_both.
+// ============================================================================
+
+// Applies `t` to BOTH complete sides. On error the result carries `eq` unchanged.
+apply_transformation :: proc(eq: Equation, t: Transformation) -> Transform_Result {
+	unimplemented()
+}
+
+// "Add 5 to both sides", "Subtract 4 from both sides", "Multiply both sides by 0",
+// "Divide both sides by 2", "Square both sides".
+transformation_title :: proc(t: Transformation) -> Label {
+	unimplemented()
+}
+
+// "equivalent", "not equivalent", "may introduce extra solutions".
+equivalence_name :: proc(e: Equivalence) -> string {
+	unimplemented()
+}
+
+// "" for Equivalent; otherwise a short player-facing warning, e.g. "Information was lost."
+equivalence_warning :: proc(e: Equivalence) -> string {
+	unimplemented()
+}
+
+// "" for .None; .Division_By_Zero -> "Division by zero is undefined."
+move_error_message :: proc(err: Move_Error) -> string {
+	unimplemented()
 }

@@ -212,6 +212,32 @@ Gameplay_Selection :: struct {
 	term:        Expr_Id,
 }
 
+Gameplay_Animation_Kind :: enum {
+	None,
+	Distribution,
+	Magnet,
+}
+
+Gameplay_Animation :: struct {
+	kind:                Gameplay_Animation_Kind,
+	active:              bool,
+	elapsed:             f32,
+	duration:            f32,
+	source:              Equation,
+	result:              Equation,
+	source_tokens:       Token_List,
+	result_tokens:       Token_List,
+	multiplier_index:    int,
+	target_indices:      [MAX_TERMS]int,
+	target_count:        int,
+	source_indices:      [MAX_TOKENS]int,
+	destination_indices: [MAX_TOKENS]int,
+	pair_count:          int,
+}
+
+GP_DISTRIBUTION_PASS_DURATION :: f32(0.52)
+GP_DISTRIBUTION_SETTLE_DURATION :: f32(0.24)
+
 Gameplay_State :: struct {
 	puzzle:            Puzzle,
 	run:               Run_Info,
@@ -234,6 +260,7 @@ Gameplay_State :: struct {
 	tile_nodes:        [MAX_TOKENS]int, // index == token index
 	tile_node_count:   int,
 	selection:         Gameplay_Selection,
+	formula_animation: Gameplay_Animation,
 	apply_node:        int,
 	undo_node:         int,
 	restart_node:      int,
@@ -314,23 +341,30 @@ init_gameplay :: proc(ctx: ^Context, puzzle: Puzzle, run: Run_Info) -> (state: G
 update_gameplay :: proc(s: ^Gameplay_State, events: []core.Event) -> core.Navigation {
 	for event in events {
 		#partial switch input in event {
-		case shared.Tick_Input: if !s.paused && !workspace_solved(&s.workspace) {
-					s.elapsed += max(input.dt, 0)
+		case shared.Tick_Input: if !s.paused {
+					dt := max(input.dt, 0)
+					if !workspace_solved(&s.workspace) { s.elapsed += dt }
+					if s.formula_animation.active {
+						s.formula_animation.elapsed += dt
+						if s.formula_animation.elapsed >= s.formula_animation.duration {
+							s.formula_animation = {}
+						}
+					}
 				}
 		case shared.Key_Input: switch input.key {
 				case .Back: return core.Go_Level_Select{difficulty = .Normal}
 				case .Pause: s.paused = !s.paused
-				case .Undo: if !s.paused && workspace_undo(&s.workspace) { gameplay_rebuild(s) }
+				case .Undo: if !s.paused {
+							s.formula_animation = {}
+							if workspace_undo(&s.workspace) { gameplay_rebuild(s) }
+						}
 				case .Up:
 					workspace_step_selection(&s.workspace, -1)
 					gameplay_rebuild(s)
 				case .Down:
 					workspace_step_selection(&s.workspace, 1)
 					gameplay_rebuild(s)
-				case .Confirm: if !s.paused && workspace_apply(&s.workspace) {
-							s.history_scroll_y = gp_history_scroll_max(s)
-							gameplay_rebuild(s)
-						}
+				case .Confirm: if !s.paused { _ = gameplay_apply_selected(s) }
 				case .Left, .Right:
 				}
 		case shared.Mouse_Input:
@@ -423,14 +457,117 @@ gameplay_activate :: proc(s: ^Gameplay_State, node: int) {
 		}
 	}
 	switch node {
-	case s.apply_node: if workspace_apply(&s.workspace) {
-				s.history_scroll_y = gp_history_scroll_max(s)
-				gameplay_rebuild(s)
-			}
-	case s.undo_node: if workspace_undo(&s.workspace) { gameplay_rebuild(s) }
+	case s.apply_node: _ = gameplay_apply_selected(s)
+	case s.undo_node:
+		s.formula_animation = {}
+		if workspace_undo(&s.workspace) { gameplay_rebuild(s) }
 	case s.restart_node:
+		s.formula_animation = {}
 		workspace_restart(&s.workspace); s.elapsed = 0; gameplay_rebuild(s)
 	case s.pause_node: s.paused = true
+	}
+}
+
+gameplay_apply_selected :: proc(s: ^Gameplay_State) -> bool {
+	if s.workspace.selected_move < 0 ||
+	   s.workspace.selected_move >= s.workspace.moves.count { return false }
+	before := workspace_current(&s.workspace)
+	move := s.workspace.moves.items[s.workspace.selected_move]
+	s.formula_animation = {}
+	if !workspace_apply(&s.workspace) { return false }
+	animation := Gameplay_Animation {
+		active           = true,
+		source           = before,
+		result           = workspace_current(&s.workspace),
+		multiplier_index = -1,
+	}
+	if move.kind == .Distribute {
+		animation.kind = .Distribution
+		gameplay_prepare_formula_animation(&animation, move)
+		if animation.target_count > 0 {
+			animation.duration =
+				f32(animation.target_count) * GP_DISTRIBUTION_PASS_DURATION +
+				GP_DISTRIBUTION_SETTLE_DURATION
+			s.formula_animation = animation
+		}
+	} else if move.kind == .Combine_Constants ||
+	   move.kind == .Combine_Like_Terms ||
+	   move.kind == .Add_To_Both ||
+	   move.kind == .Subtract_From_Both {
+		animation.kind = .Magnet
+		gameplay_prepare_magnet_animation(&animation, move)
+		if animation.pair_count > 0 {
+			animation.duration = 0.72
+			s.formula_animation = animation
+		}
+	}
+	s.history_scroll_y = gp_history_scroll_max(s)
+	gameplay_rebuild(s)
+	return true
+}
+
+gameplay_prepare_formula_animation :: proc(animation: ^Gameplay_Animation, move: Move) {
+	animation.source_tokens = tokenize(animation.source)
+	open_index := -1
+	for i in 0 ..< animation.source_tokens.count {
+		token := animation.source_tokens.items[i]
+		if token.term == move.target && token.kind == .Paren && label_str(&token.text) == "(" {
+			open_index = i
+			break
+		}
+	}
+	if open_index < 0 { return }
+
+	for i := open_index - 1; i >= 0; i -= 1 {
+		token := animation.source_tokens.items[i]
+		if token.kind == .Operator { continue }
+		if token.term == move.target { animation.multiplier_index = i }
+		break
+	}
+	if animation.multiplier_index < 0 { return }
+
+	first := open_index + 1
+	for first < animation.source_tokens.count &&
+	    animation.source_tokens.items[first].kind == .Operator {
+		first += 1
+	}
+	if first >= animation.source_tokens.count { return }
+	animation.target_indices[animation.target_count] = first
+	animation.target_count += 1
+
+	depth := 1
+	for i := open_index + 1; i < animation.source_tokens.count; i += 1 {
+		token := animation.source_tokens.items[i]
+		if token.kind == .Paren {
+			text := label_str(&token.text)
+			if text == "(" { depth += 1 }
+			if text == ")" { depth -= 1 }
+			if depth == 0 { break }
+		}
+		if depth == 1 && token.kind == .Operator {
+			text := label_str(&token.text)
+			if text != "+" && text != "−" { continue }
+			next := i + 1
+			for next < animation.source_tokens.count &&
+			    animation.source_tokens.items[next].kind == .Operator {
+				next += 1
+			}
+			if next < animation.source_tokens.count && animation.target_count < MAX_TERMS {
+				animation.target_indices[animation.target_count] = next
+				animation.target_count += 1
+			}
+		}
+	}
+}
+
+gameplay_prepare_magnet_animation :: proc(animation: ^Gameplay_Animation, move: Move) {
+	animation.source_tokens = tokenize(animation.source)
+	animation.result_tokens = tokenize(animation.result)
+	mapping := move_animation_map(animation.source, animation.result, move)
+	for pair in mapping.pairs[:mapping.count] {
+		animation.source_indices[animation.pair_count] = pair.source_token
+		animation.destination_indices[animation.pair_count] = pair.destination_token
+		animation.pair_count += 1
 	}
 }
 

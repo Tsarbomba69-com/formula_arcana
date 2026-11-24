@@ -294,7 +294,11 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 	// Formula box + tiles
 	box := gp_rect_formula_box(ox)
 	gp_box(v, box, {5, 16, 24, 255}, solved ? GP_GREEN : GP_TEAL, 1.5)
-	gp_draw_tiles(v)
+	if s.formula_animation.active {
+		gp_draw_formula_animation(v, box)
+	} else {
+		gp_draw_tiles(v)
+	}
 
 	// Legend
 	ly := p.y + 231
@@ -313,6 +317,204 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 	gp_hline(v, x, p.y + 261, p.w - 48, GP_DIVIDER)
 
 	gp_draw_preview(v, p, solved)
+}
+
+gp_draw_formula_animation :: proc(v: ^Gp_View, box: shared.Rect) {
+	s := v.s
+	a := s.formula_animation
+	if a.kind == .Magnet {
+		gp_draw_magnet_animation(v, box)
+		return
+	}
+	pass_time := f32(a.target_count) * GP_DISTRIBUTION_PASS_DURATION
+	center_x := box.x + box.w / 2
+
+	if a.elapsed < pass_time {
+		stage := int(a.elapsed / GP_DISTRIBUTION_PASS_DURATION)
+		stage = min(stage, a.target_count - 1)
+		stage_elapsed := a.elapsed - f32(stage) * GP_DISTRIBUTION_PASS_DURATION
+		stage_progress := clamp(stage_elapsed / GP_DISTRIBUTION_PASS_DURATION, 0, 1)
+		target_index := a.target_indices[stage]
+		gp_draw_distribution_source(v, box, a.source_tokens, target_index, 255)
+
+		label_buf: [32]u8
+		label := fmt.bprintf(
+			label_buf[:],
+			"PASSING FACTOR · %02d / %02d",
+			stage + 1,
+			a.target_count,
+		)
+		gp_text(v, label, center_x, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
+
+		source_rect := gp_formula_tile_rect(box, a.source_tokens.count, a.multiplier_index)
+		target_rect := gp_formula_tile_rect(box, a.source_tokens.count, target_index)
+		start_x, start_y := source_rect.x + source_rect.w / 2, source_rect.y + source_rect.h / 2
+		end_x, end_y := target_rect.x + target_rect.w / 2, target_rect.y + target_rect.h / 2
+		travel := clamp(stage_progress / 0.72, 0, 1)
+		eased := travel * travel * (3 - 2 * travel)
+		card_x := start_x + (end_x - start_x) * eased
+		card_y := start_y + (end_y - start_y) * eased - math.sin(travel * 3.14159) * 18
+		if travel >= 1 { gp_outline(v, target_rect, 2.5, GP_TEAL) }
+
+		card := shared.Rect{card_x - 22, card_y - 20, 44, 40}
+		gp_box(v, card, GP_TILE_CONST, GP_TEAL, 1.5)
+		card_text := label_str(&a.source_tokens.items[a.multiplier_index].text)
+		gp_text(v, card_text, card_x, card_y, 20, GP_AMBER, s.fonts.math, .Center)
+		return
+	}
+
+	settle_progress := clamp((a.elapsed - pass_time) / GP_DISTRIBUTION_SETTLE_DURATION, 0, 1)
+	old_alpha := u8(math.round(255 * (1 - settle_progress)))
+	gp_draw_distribution_source(v, box, a.source_tokens, -1, old_alpha)
+	gp_text(v, "DISTRIBUTED", center_x, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
+}
+
+gp_draw_distribution_source :: proc(
+	v: ^Gp_View,
+	box: shared.Rect,
+	tokens: Token_List,
+	highlight_index: int,
+	alpha: u8,
+) {
+	for i in 0 ..< tokens.count {
+		r := gp_formula_tile_rect(box, tokens.count, i)
+		gp_draw_formula_token(
+			v,
+			tokens.items[i],
+			r,
+			gp_formula_font_size(box, tokens.count),
+			alpha,
+			true,
+		)
+		if i == highlight_index { gp_outline(v, r, 2, GP_TEAL) }
+	}
+}
+
+gp_formula_font_size :: proc(box: shared.Rect, count: int) -> f32 {
+	return clamp(
+		gp_formula_tile_width(box, count) * GP_TILE_WIDTH_FACTOR,
+		GP_TILE_FONT_MIN,
+		GP_TILE_FONT_MAX,
+	)
+}
+
+gp_draw_formula_token :: proc(
+	v: ^Gp_View,
+	token: Token,
+	r: shared.Rect,
+	font_size: f32,
+	alpha: u8,
+	draw_tile: bool,
+) {
+	s := v.s
+	tok := token
+	text := label_str(&tok.text)
+	cx, cy := r.x + r.w / 2, r.y + r.h / 2
+	switch token.kind {
+	case .Constant:
+		color, fill := GP_AMBER, GP_TILE_CONST
+		color[3], fill[3] = alpha, alpha
+		if draw_tile { gp_fill(v, r, fill) }
+		gp_text(v, text, cx, cy, font_size, color, s.fonts.math, .Center)
+	case .Operator:
+		color, fill := GP_OP_TEXT, GP_TILE_OP
+		color[3], fill[3] = alpha, alpha
+		if draw_tile { gp_fill(v, r, fill) }
+		gp_text(v, text, cx, cy, font_size, color, s.fonts.math, .Center)
+	case .Variable:
+		color := GP_VAR
+		color[3] = alpha
+		gp_text(v, text, cx, cy, font_size, color, s.fonts.math_italic, .Center)
+	case .Paren:
+		color := GP_TEAL_SOFT
+		color[3] = alpha
+		gp_text(v, text, cx, cy, font_size, color, s.fonts.math, .Center)
+	}
+}
+
+gp_draw_magnet_animation :: proc(v: ^Gp_View, box: shared.Rect) {
+	s := v.s
+	a := s.formula_animation
+	progress := clamp(a.elapsed / a.duration, 0, 1)
+	gp_draw_distribution_source(v, box, a.source_tokens, -1, 255)
+
+	// Show the destination equation as a dim magnet field while changed tokens
+	// leave their old positions and converge on the result.
+	ghost_alpha := u8(math.round(52 + progress * 70))
+	for i in 0 ..< a.result_tokens.count {
+		if gp_token_is_magnetic_destination(a, i) {
+			r := gp_formula_tile_rect(box, a.result_tokens.count, i)
+			color := GP_TEAL
+			color[3] = ghost_alpha
+			gp_outline(v, r, 2, color)
+			gp_draw_formula_token(
+				v,
+				a.result_tokens.items[i],
+				r,
+				gp_formula_font_size(box, a.result_tokens.count),
+				ghost_alpha,
+				false,
+			)
+		}
+	}
+
+	for i in 0 ..< a.pair_count {
+		source_index := a.source_indices[i]
+		destination_index := a.destination_indices[i]
+		from := gp_formula_tile_rect(box, a.source_tokens.count, source_index)
+		to := gp_formula_tile_rect(box, a.result_tokens.count, destination_index)
+		stagger := f32(i) * 0.035
+		local := clamp((progress - stagger) / max(1 - stagger, 0.001), 0, 1)
+		eased := 1 - math.pow(1 - local, 3)
+		from_x, from_y := from.x + from.w / 2, from.y + from.h / 2
+		to_x, to_y := to.x + to.w / 2, to.y + to.h / 2
+		x := from_x + (to_x - from_x) * eased
+		y := from_y + (to_y - from_y) * eased - math.sin(local * 3.14159) * 9
+
+		// Fade the original token at its old location as the magnetic copy moves.
+		remaining_alpha := u8(math.round(255 * (1 - eased)))
+		old_token := a.source_tokens.items[source_index]
+		gp_fill(v, from, {5, 16, 24, 255})
+		gp_draw_formula_token(
+			v,
+			old_token,
+			from,
+			gp_formula_font_size(box, a.source_tokens.count),
+			remaining_alpha,
+			false,
+		)
+
+		chip := shared.Rect{x - 20, y - 19, 40, 38}
+		gp_box(v, chip, GP_TILE_CONST, GP_TEAL, 1.5)
+		gp_draw_formula_token(v, old_token, chip, 19, 255, false)
+	}
+
+	if progress > 0.72 {
+		alpha := u8(math.round(255 * ((progress - 0.72) / 0.28)))
+		color := GP_TEAL_SOFT
+		color[3] = alpha
+		buf: [LABEL_CAP * 2]u8
+		formula := format_equation(a.result, buf[:])
+		font_size := gp_fit(v, formula, 24, box.w - 20, 14, s.fonts.math)
+		gp_text(v, formula, box.x + box.w / 2, box.y + 68, font_size, color, s.fonts.math, .Center)
+	}
+	gp_text(
+		v,
+		"PULLING TOKENS INTO PLACE",
+		box.x + box.w / 2,
+		box.y + 14,
+		9,
+		GP_TEAL,
+		s.fonts.mono,
+		.Center,
+	)
+}
+
+gp_token_is_magnetic_destination :: proc(a: Gameplay_Animation, index: int) -> bool {
+	for i in 0 ..< a.pair_count {
+		if a.destination_indices[i] == index { return true }
+	}
+	return false
 }
 
 gp_draw_tiles :: proc(v: ^Gp_View) {

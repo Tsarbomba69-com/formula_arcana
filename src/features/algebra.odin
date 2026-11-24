@@ -55,3 +55,6 @@ Move_View :: algebra.Move_View
 describe_move :: algebra.describe_move
 explain_move :: algebra.explain_move
 is_solved :: algebra.is_solved
+Move_Animation_Pair :: algebra.Move_Animation_Pair
+Move_Animation_Map :: algebra.Move_Animation_Map
+move_animation_map :: algebra.move_animation_map

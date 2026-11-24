@@ -77,4 +77,3 @@ alg_intrinsic_neg :: proc(eq: ^Equation, id: Expr_Id) -> bool {
 alg_term_negative :: proc(eq: ^Equation, t: Sum_Term) -> bool {
 	return t.neg != alg_intrinsic_neg(eq, t.node)
 }
-
