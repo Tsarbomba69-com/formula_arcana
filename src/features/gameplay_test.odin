@@ -702,7 +702,11 @@ given_an_addition_operator_when_clicked_then_it_is_selected_independently_of_its
 	_ = gp_click(&state, plus_node)
 	gp_draw(&state, ctx, &capture)
 
-	testing.expect(t, state.selected_operator >= 0, "the clicked operation should be selected")
+	testing.expect(
+		t,
+		state.selection.kind == .Operator,
+		"the clicked operation should be selected",
+	)
 	testing.expect(
 		t,
 		state.workspace.selection == nil,
@@ -714,8 +718,25 @@ given_an_addition_operator_when_clicked_then_it_is_selected_independently_of_its
 		{"SCOPE: OPERATION", "Selected operation: + · click again to clear"},
 	)
 
+	// The selected scope changes the move list and rebuilds the tree, so node
+	// indices may shift. Resolve the operator node again before clicking it.
+	plus_node = -1
+	for i in 0 ..< state.tile_node_count {
+		token := state.tokens.items[i]
+		if token.kind == .Operator && label_str(&token.text) == "+" {
+			plus_node = state.tile_nodes[i]
+			break
+		}
+	}
+	testing.expect(
+		t,
+		plus_node >= 0,
+		"the selected operator should remain available after rebuilding",
+	)
+	if plus_node < 0 { return }
+
 	_ = gp_click(&state, plus_node)
-	testing.expect_value(t, state.selected_operator, -1)
+	testing.expect_value(t, state.selection.kind, Gameplay_Selection_Kind.None)
 }
 
 // ============================================================================

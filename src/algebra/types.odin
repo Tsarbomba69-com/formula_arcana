@@ -1,0 +1,139 @@
+package algebra
+
+MAX_NODES :: 32
+MAX_TOKENS :: 24
+MAX_MOVES :: 8
+MAX_TERMS :: 16
+LABEL_CAP :: 96
+
+EQUIVALENCE_NOTE :: "Equivalent for every x ∈ ℝ"
+DISTRIBUTIVE_ADDITION_RULE :: "Addition: a(b + c) = ab + ac"
+DISTRIBUTIVE_SUBTRACTION_RULE :: "Subtraction: a(b - c) = ab - ac"
+
+@(private = "package")
+MINUS :: "−" // U+2212
+PLUS :: "+"
+
+// ---- Expression tree ------------------------------------------------------------
+
+Expr_Id :: distinct int
+NO_EXPR :: Expr_Id(-1)
+
+Binary_Op :: enum {
+	Add,
+	Sub,
+	Mul, // also produced by implicit multiplication: 3x, 3(x − 4)
+}
+
+Num :: struct {
+	value: i64,
+}
+
+Var :: struct {
+	name: u8,
+}
+
+Bin :: struct {
+	op:          Binary_Op,
+	left, right: Expr_Id,
+}
+
+Expr_Node :: union {
+	Num,
+	Var,
+	Bin,
+}
+
+Equation :: struct {
+	nodes:    [MAX_NODES]Expr_Node,
+	count:    int,
+	lhs, rhs: Expr_Id,
+	overflow: bool, // the pool was too small while building
+}
+
+Side :: enum {
+	Left,
+	Right,
+}
+
+// ---- Fixed-capacity text -----------------------------------------------------------
+
+Label :: struct {
+	data: [LABEL_CAP]u8,
+	len:  int,
+}
+
+label_set :: proc(l: ^Label, s: string) {
+	l.len = min(len(s), LABEL_CAP)
+	copy(l.data[:l.len], s[:l.len])
+}
+
+label_str :: proc(l: ^Label) -> string {
+	return string(l.data[:l.len])
+}
+
+Parse_Error :: enum {
+	None,
+	Empty,
+	Missing_Equals,
+	Unbalanced_Parens,
+	Unexpected_Character,
+	Expected_Expression,
+	Too_Many_Nodes,
+}
+Token_Kind :: enum {
+	Constant, // 3, 4, 17
+	Variable, // x
+	Operator, // + − = ×
+	Paren, // ( )
+}
+
+Token :: struct {
+	kind: Token_Kind,
+	text: Label,
+	term: Expr_Id, // additive term this tile belongs to; NO_EXPR for operators
+	side: Side,
+}
+
+Token_List :: struct {
+	items: [MAX_TOKENS]Token,
+	count: int,
+}
+Move_Kind :: enum {
+	Distribute,
+	Combine_Constants,
+	Combine_Like_Terms,
+	Add_To_Both,
+	Subtract_From_Both,
+	Divide_Both,
+}
+
+// 2x == {2, true}; 4 == {4, false}. Balance moves: always the magnitude added / subtracted.
+// Divide_Both: the (signed) coefficient divided by. Distribute: the signed multiplier.
+Term :: struct {
+	coef:    i64,
+	has_var: bool,
+}
+
+Move :: struct {
+	kind:    Move_Kind,
+	side:    Side, // side the term lives on / the side being simplified
+	target:  Expr_Id, // Distribute: the term. Balance: the cancelled term. Combine: NO_EXPR
+	operand: Term,
+}
+
+Move_List :: struct {
+	items: [MAX_MOVES]Move,
+	count: int,
+}
+
+// What the UI shows for one move.
+Move_View :: struct {
+	title:   Label, // "Distributive property" or "Subtract 2x"
+	action:  Label, // concrete operation recorded in history, e.g. "Distribute 3"
+	rule:    Label, // general mathematical rule represented by the move
+	rule_2:  Label, // second form when a property has multiple cases
+	preview: Label, // raw, unsimplified: "3x − 4 − 2x = 2x + 17 − 2x"
+	hint:    Label, // "Cancel the variable on the right."
+	heading: Label, // "AFTER SUBTRACTING 2x" (caps, variable stays lower-case)
+}
