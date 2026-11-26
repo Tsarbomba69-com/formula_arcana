@@ -235,6 +235,8 @@ Gameplay_Swap_Animation :: struct {
 	swap_start:    int, // first token of the swapped region
 	swap_a_len:    int, // tokens in term A (left of the operator)
 	swap_b_len:    int, // tokens in term B (right of the operator)
+	swap_signed:   bool, // term A has a leading sign that moves with it
+	swap_signed_terms: bool, // both adjacent terms carry their signs while swapping
 }
 
 Gameplay_Animation_Payload :: union {
@@ -584,6 +586,8 @@ gameplay_prepare_formula_animation :: proc(
 			    animation.source_tokens.items[next].kind == .Operator {
 				next += 1
 			}
+
+			if next == first { continue }
 			if next < animation.source_tokens.count && animation.target_count < MAX_TERMS {
 				animation.target_indices[animation.target_count] = next
 				animation.target_count += 1
@@ -612,9 +616,231 @@ gp_token_same :: proc(a, b: Token) -> bool {
 	return a.kind == b.kind && label_str(&x.text) == label_str(&y.text)
 }
 
+gameplay_prepare_signed_swap_animation :: proc(
+	animation: ^Gameplay_Swap_Animation,
+	source, result: ^Token_List,
+) -> bool {
+	// Commuting a subtraction rewrites `A − B` as `−B + A`, which adds
+	// a unary-minus token. Match the operands and unchanged surrounding
+	// tokens while allowing that one extra result token.
+	if result.count != source.count + 1 { return false }
+	for start in 0 ..< source.count {
+		for a_len in 1 ..< source.count - start {
+			op := start + a_len
+			if source.items[op].kind != .Operator ||
+			   label_str(&source.items[op].text) != "−" { continue }
+			for b_len in 1 ..< source.count - op {
+				source_end := op + b_len + 1
+				result_end := start + a_len + b_len + 3
+				if result_end > result.count { continue }
+				if result.items[start].kind != .Operator ||
+				   label_str(&result.items[start].text) != "−" ||
+				   result.items[start + b_len + 1].kind != .Operator ||
+				   label_str(&result.items[start + b_len + 1].text) != "+" { continue }
+
+				matches := true
+				for i in 0 ..< start {
+					if !gp_token_same(source.items[i], result.items[i]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+				for i in 0 ..< b_len {
+					if !gp_token_same(source.items[op + 1 + i], result.items[start + 1 + i]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+				for i in 0 ..< a_len {
+					if !gp_token_same(source.items[start + i], result.items[start + b_len + 2 + i]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+				for i in source_end ..< source.count {
+					if !gp_token_same(source.items[i], result.items[i + 1]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+
+				animation.swap_start = start
+				animation.swap_a_len = a_len
+				animation.swap_b_len = b_len
+				return true
+			}
+		}
+	}
+	return false
+}
+
+gameplay_prepare_unsigned_swap_animation :: proc(
+	animation: ^Gameplay_Swap_Animation,
+	source, result: ^Token_List,
+) -> bool {
+	// The reverse rewrite, `−B + A` to `A − B`, removes the leading
+	// unary-minus token. The visible operands still swap around the plus.
+	if result.count + 1 != source.count { return false }
+	for start in 0 ..< source.count {
+		if source.items[start].kind != .Operator ||
+		   label_str(&source.items[start].text) != "−" { continue }
+		for b_len in 1 ..< source.count - start - 1 {
+			plus := start + b_len + 1
+			if plus >= source.count || source.items[plus].kind != .Operator ||
+			   label_str(&source.items[plus].text) != "+" { continue }
+			for a_len in 1 ..< source.count - plus - 1 {
+				source_end := plus + a_len + 1
+				if start + a_len + b_len + 1 > result.count { continue }
+				if result.items[start + a_len].kind != .Operator ||
+				   label_str(&result.items[start + a_len].text) != "−" { continue }
+
+				matches := true
+				for i in 0 ..< start {
+					if !gp_token_same(source.items[i], result.items[i]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+				for i in 0 ..< a_len {
+					if !gp_token_same(source.items[plus + 1 + i], result.items[start + i]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+				for i in 0 ..< b_len {
+					if !gp_token_same(source.items[start + 1 + i], result.items[start + a_len + 1 + i]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+				for i in source_end ..< source.count {
+					if !gp_token_same(source.items[i], result.items[i - 1]) {
+						matches = false
+						break
+					}
+				}
+				if !matches { continue }
+
+				// Include the leading minus in term A so it travels with B.
+				animation.swap_start = start
+				animation.swap_a_len = b_len + 1
+				animation.swap_b_len = a_len
+				animation.swap_signed = true
+				return true
+			}
+		}
+	}
+	return false
+}
+
+gameplay_prepare_signed_terms_swap_animation :: proc(
+	animation: ^Gameplay_Swap_Animation,
+	source, result: ^Token_List,
+) -> bool {
+	// Match `s₁ A s₂ B` to `s₂ B s₁ A` as two signed blocks. Both signs
+	// travel with their terms, regardless of which order they are in.
+	if source.count != result.count { return false }
+	for start in 0 ..< source.count {
+		first_sign := source.items[start]
+		first_sign_text := label_str(&first_sign.text)
+		if first_sign.kind != .Operator || (first_sign_text != "+" && first_sign_text != "−") {
+			continue
+		}
+		if start + 1 >= source.count { continue }
+		first_term := source.items[start + 1].term
+		if first_term == NO_EXPR { continue }
+
+		for separator in start + 2 ..< source.count {
+			separator_token := source.items[separator]
+			separator_text := label_str(&separator_token.text)
+			if separator_token.kind != .Operator || (separator_text != "+" && separator_text != "−") {
+				continue
+			}
+			if source.items[separator - 1].term != first_term || separator + 1 >= source.count {
+				continue
+			}
+			second_term := source.items[separator + 1].term
+			if second_term == NO_EXPR || second_term == first_term { continue }
+
+			second_start := separator + 1
+			second_end := source.count
+			for i in second_start + 1 ..< source.count {
+				token := source.items[i]
+				if token.side != separator_token.side ||
+				   (token.kind == .Operator && label_str(&token.text) == "=") {
+					second_end = i
+					break
+				}
+				if token.kind == .Operator {
+					text := label_str(&token.text)
+					if (text == "+" || text == "−") &&
+					   source.items[i - 1].term == second_term &&
+					   (i + 1 >= source.count || source.items[i + 1].term != second_term) {
+						second_end = i
+						break
+					}
+				}
+			}
+			first_len := separator - start
+			second_len := second_end - second_start
+			result_first_sign := start + second_len + 1
+			result_first_start := result_first_sign + 1
+			if result_first_start + first_len - 1 != second_end { continue }
+			if result.items[start].kind != .Operator ||
+			   label_str(&result.items[start].text) != separator_text ||
+			   result.items[result_first_sign].kind != .Operator ||
+			   label_str(&result.items[result_first_sign].text) != first_sign_text { continue }
+
+			matches := true
+			for i in 0 ..< start {
+				if !gp_token_same(source.items[i], result.items[i]) {
+					matches = false
+					break
+				}
+			}
+			if !matches { continue }
+			for i in 0 ..< second_len {
+				if !gp_token_same(source.items[second_start + i], result.items[start + 1 + i]) {
+					matches = false
+					break
+				}
+			}
+			if !matches { continue }
+			for i in 0 ..< first_len - 1 {
+				if !gp_token_same(source.items[start + 1 + i], result.items[result_first_start + i]) {
+					matches = false
+					break
+				}
+			}
+			if !matches { continue }
+			for i in second_end ..< source.count {
+				if !gp_token_same(source.items[i], result.items[i]) {
+					matches = false
+					break
+				}
+			}
+			if !matches { continue }
+
+			animation.swap_start = start
+			animation.swap_a_len = first_len
+			animation.swap_b_len = second_len + 1
+			animation.swap_signed_terms = true
+			return true
+		}
+	}
+	return false
+}
+
 // A constant/variable token glued to its neighbour (the "2" in "2x") belongs to the same term.
 gp_token_is_atom :: proc(t: Token) -> bool {
-	return t.kind == .Constant || t.kind == .Variable
+	return t.kind == .Constant || t.kind == .Variable || t.kind == .Paren
 }
 
 // A Commute turns `A op B` into `B op A`. Rather than trust token->term ids, find the
@@ -631,7 +857,16 @@ gameplay_prepare_swap_animation :: proc(
 	animation.source_tokens = tokenize(source)
 	animation.result_tokens = tokenize(result)
 	src, res := &animation.source_tokens, &animation.result_tokens
-	if src.count != res.count || src.count < 3 { return }
+	if src.count < 3 { return }
+	if src.count != res.count {
+		if src.count > res.count {
+			gameplay_prepare_unsigned_swap_animation(animation, src, res)
+		} else {
+			gameplay_prepare_signed_swap_animation(animation, src, res)
+		}
+		return
+	}
+	if gameplay_prepare_signed_terms_swap_animation(animation, src, res) { return }
 
 	lo, hi := -1, -1
 	for i in 0 ..< src.count {

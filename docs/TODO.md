@@ -11,6 +11,6 @@
 * [x] Fix special char text rendering [HIGH]
 * [x] Add gameplay missing fonts [MEDIUM]
 * [x] Implement scroll to UI system. [MEDIUM]
-* [ ] Render formula state [HIGH]
-* [ ] Construct axiom/propertyes/inference rules database. [HIGH]
+* [x] Render formula state [HIGH]
+* [ ] Write testing bot [MEDIUM]
 * [ ] Construct UI by asset file (json, plaintext, etc). [LOW]

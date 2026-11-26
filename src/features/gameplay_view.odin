@@ -456,68 +456,63 @@ gp_draw_magnet_animation :: proc(
 ) {
 	s := v.s
 	progress := clamp(a.elapsed / a.duration, 0, 1)
+	src_font := gp_formula_font_size(box, payload.source_tokens.count)
+	res_font := gp_formula_font_size(box, payload.result_tokens.count)
+
+	// Draw base source formula cleanly.
 	gp_draw_distribution_source(v, box, payload.source_tokens, -1, 255)
 
-	// Show the destination equation as a dim magnet field while changed tokens
-	// leave their old positions and converge on the result.
-	ghost_alpha := u8(math.round(52 + progress * 70))
+	// Subtle destination outlines where tokens are landing.
+	ghost_alpha := u8(math.round(35 + progress * 85))
 	for i in 0 ..< payload.result_tokens.count {
 		if gp_token_is_magnetic_destination(payload, i) {
 			r := gp_formula_tile_rect(box, payload.result_tokens.count, i)
 			color := GP_TEAL
 			color[3] = ghost_alpha
-			gp_outline(v, r, 2, color)
+			gp_outline(v, r, 1.5, color)
 			gp_draw_formula_token(
 				v,
 				payload.result_tokens.items[i],
 				r,
-				gp_formula_font_size(box, payload.result_tokens.count),
+				res_font,
 				ghost_alpha,
 				false,
 			)
 		}
 	}
 
+	arc_height := min(box.h * 0.2, 16)
 	for i in 0 ..< payload.pair_count {
 		source_index := payload.source_indices[i]
 		destination_index := payload.destination_indices[i]
 		from := gp_formula_tile_rect(box, payload.source_tokens.count, source_index)
 		to := gp_formula_tile_rect(box, payload.result_tokens.count, destination_index)
-		stagger := f32(i) * 0.035
+
+		stagger := f32(i) * 0.03
 		local := clamp((progress - stagger) / max(1 - stagger, 0.001), 0, 1)
 		eased := 1 - math.pow(1 - local, 3)
-		from_x, from_y := from.x + from.w / 2, from.y + from.h / 2
-		to_x, to_y := to.x + to.w / 2, to.y + to.h / 2
-		x := from_x + (to_x - from_x) * eased
-		y := from_y + (to_y - from_y) * eased - math.sin(local * 3.14159) * 9
 
-		// Fade the original token at its old location as the magnetic copy moves.
+		// Fade out the old token in place as the moving tile takes over.
 		remaining_alpha := u8(math.round(255 * (1 - eased)))
 		old_token := payload.source_tokens.items[source_index]
 		gp_fill(v, from, {5, 16, 24, 255})
-		gp_draw_formula_token(
-			v,
-			old_token,
-			from,
-			gp_formula_font_size(box, payload.source_tokens.count),
-			remaining_alpha,
-			false,
-		)
+		gp_draw_formula_token(v, old_token, from, src_font, remaining_alpha, true)
 
-		chip := shared.Rect{x - 20, y - 19, 40, 38}
-		gp_box(v, chip, GP_TILE_CONST, GP_TEAL, 1.5)
-		gp_draw_formula_token(v, old_token, chip, 19, 255, false)
+		// Interpolate tile dimensions and font size smoothly into the destination slot.
+		cur_w := from.w + (to.w - from.w) * eased
+		cur_h := from.h + (to.h - from.h) * eased
+		from_cx, from_cy := from.x + from.w / 2, from.y + from.h / 2
+		to_cx, to_cy := to.x + to.w / 2, to.y + to.h / 2
+		cx := from_cx + (to_cx - from_cx) * eased
+		cy := from_cy + (to_cy - from_cy) * eased - math.sin(local * math.PI) * arc_height
+		cur_font := src_font + (res_font - src_font) * eased
+
+		chip := shared.Rect{cx - cur_w / 2, cy - cur_h / 2, cur_w, cur_h}
+		gp_fill(v, chip, {5, 16, 24, 255})
+		gp_draw_formula_token(v, old_token, chip, cur_font, 255, true)
+		gp_outline(v, chip, 1.5, GP_TEAL)
 	}
 
-	if progress > 0.72 {
-		alpha := u8(math.round(255 * ((progress - 0.72) / 0.28)))
-		color := GP_TEAL_SOFT
-		color[3] = alpha
-		buf: [LABEL_CAP * 2]u8
-		formula := format_equation(a.result, buf[:])
-		font_size := gp_fit(v, formula, 24, box.w - 20, 14, s.fonts.math)
-		gp_text(v, formula, box.x + box.w / 2, box.y + 68, font_size, color, s.fonts.math, .Center)
-	}
 	gp_text(
 		v,
 		"PULLING TOKENS INTO PLACE",
@@ -568,6 +563,126 @@ gp_draw_swap_animation :: proc(
 	b_lo := op + 1
 	end := b_lo + payload.swap_b_len // exclusive
 	cap := box.h * 0.28
+	if payload.swap_signed_terms {
+		// Both signs belong to their terms. Move the two complete signed
+		// blocks, rather than treating either sign as an operator tile.
+		for i in 0 ..< count {
+			if i >= a_lo && i < end { continue }
+			r := gp_formula_tile_rect(box, count, i)
+			gp_draw_formula_token(v, payload.source_tokens.items[i], r, font, 255, true)
+		}
+		ghost := GP_TEAL
+		ghost[3] = u8(math.round(40 + 90 * progress))
+		for i in a_lo ..< end {
+			gp_outline(v, gp_formula_tile_rect(box, count, i), 1.5, ghost)
+		}
+		for k in 0 ..< payload.swap_b_len {
+			from := gp_formula_tile_rect(box, count, a_lo + payload.swap_a_len + k)
+			to := gp_formula_tile_rect(box, count, a_lo + k)
+			gp_draw_swap_token(v, payload.source_tokens.items[a_lo + payload.swap_a_len + k], from, to, theta, cap, font)
+		}
+		for k in 0 ..< payload.swap_a_len {
+			from := gp_formula_tile_rect(box, count, a_lo + k)
+			to := gp_formula_tile_rect(box, count, a_lo + payload.swap_b_len + k)
+			gp_draw_swap_token(v, payload.source_tokens.items[a_lo + k], from, to, theta, cap, font)
+		}
+		gp_text(v, "SWAPPING TERMS", box.x + box.w / 2, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
+		return
+	}
+	if payload.swap_signed {
+		// The leading sign travels with term A and lands in the new operator
+		// slot. Reflow the rest of the formula at the same time, so the right
+		// side slides into the space freed by the removed plus token.
+		sign_index := a_lo
+		result_count := payload.result_tokens.count
+		result_font := gp_formula_font_size(box, result_count)
+		result_op := sign_index + payload.swap_b_len
+		result_magnitude := result_op + 1
+		destination_end := result_magnitude + payload.swap_a_len - 1
+
+		for i in 0 ..< count {
+			if i >= sign_index && i < end { continue }
+			if i == op { continue }
+			result_index := i
+			if i >= end { result_index -= 1 }
+			from := gp_formula_tile_rect(box, count, i)
+			to := gp_formula_tile_rect(box, result_count, result_index)
+			gp_draw_reflow_token(
+				v,
+				payload.source_tokens.items[i],
+				from,
+				to,
+				font,
+				result_font,
+				eased,
+			)
+		}
+
+		ghost := GP_TEAL
+		ghost[3] = u8(math.round(40 + 90 * progress))
+		for i in sign_index ..< destination_end {
+			gp_outline(v, gp_formula_tile_rect(box, result_count, i), 1.5, ghost)
+		}
+
+		for k in 0 ..< payload.swap_b_len {
+			from := gp_formula_tile_rect(box, count, b_lo + k)
+			to := gp_formula_tile_rect(box, result_count, sign_index + k)
+			gp_draw_swap_token_reflow(
+				v,
+				payload.source_tokens.items[b_lo + k],
+				from,
+				to,
+				theta,
+				cap,
+				font,
+				result_font,
+				eased,
+			)
+		}
+
+		sign_from := gp_formula_tile_rect(box, count, sign_index)
+		sign_to := gp_formula_tile_rect(box, result_count, result_op)
+		gp_draw_swap_token_reflow(
+			v,
+			payload.source_tokens.items[sign_index],
+			sign_from,
+			sign_to,
+			theta,
+			cap,
+			font,
+			result_font,
+			eased,
+		)
+		for k in 0 ..< payload.swap_a_len - 1 {
+			from := gp_formula_tile_rect(box, count, a_lo + 1 + k)
+			to := gp_formula_tile_rect(box, result_count, result_magnitude + k)
+			gp_draw_swap_token_reflow(
+				v,
+				payload.source_tokens.items[a_lo + 1 + k],
+				from,
+				to,
+				theta,
+				cap,
+				font,
+				result_font,
+				eased,
+			)
+		}
+
+		// The source plus has no matching token in `A − B`; fade it as the
+		// signed term's minus sign takes the operator's destination.
+		plus_rect := gp_formula_tile_rect(box, count, op)
+		gp_draw_formula_token(
+			v,
+			payload.source_tokens.items[op],
+			plus_rect,
+			font,
+			u8(math.round(255 * (1 - eased))),
+			true,
+		)
+		gp_text(v, "SWAPPING TERMS", box.x + box.w / 2, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
+		return
+	}
 
 	// Everything outside the swapped region stays put.
 	for i in 0 ..< count {
@@ -617,6 +732,38 @@ gp_draw_swap_token :: proc(
 	x, y := gp_swap_orbit(from, to, theta, cap)
 	r := shared.Rect{x - from.w / 2, y - from.h / 2, from.w, from.h}
 	gp_fill(v, r, {5, 16, 24, 255}) // hide whatever it passes over
+	gp_draw_formula_token(v, token, r, font, 255, true)
+	gp_outline(v, r, 1.5, GP_TEAL)
+}
+
+gp_draw_reflow_token :: proc(
+	v: ^Gp_View,
+	token: Token,
+	from, to: shared.Rect,
+	from_font, to_font, progress: f32,
+) {
+	r := shared.Rect{
+		x = from.x + (to.x - from.x) * progress,
+		y = from.y + (to.y - from.y) * progress,
+		w = from.w + (to.w - from.w) * progress,
+		h = from.h + (to.h - from.h) * progress,
+	}
+	font := from_font + (to_font - from_font) * progress
+	gp_draw_formula_token(v, token, r, font, 255, true)
+}
+
+gp_draw_swap_token_reflow :: proc(
+	v: ^Gp_View,
+	token: Token,
+	from, to: shared.Rect,
+	theta, cap, from_font, to_font, progress: f32,
+) {
+	x, y := gp_swap_orbit(from, to, theta, cap)
+	w := from.w + (to.w - from.w) * progress
+	h := from.h + (to.h - from.h) * progress
+	r := shared.Rect{x - w / 2, y - h / 2, w, h}
+	font := from_font + (to_font - from_font) * progress
+	gp_fill(v, r, {5, 16, 24, 255})
 	gp_draw_formula_token(v, token, r, font, 255, true)
 	gp_outline(v, r, 1.5, GP_TEAL)
 }

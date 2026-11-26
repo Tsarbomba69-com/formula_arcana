@@ -11,7 +11,7 @@ package hot_reload
 // Both sides must be built for the same target and agree on this layout and
 // calling convention. Increment ABI_VERSION when making an incompatible change.
 
-ABI_VERSION :: 2
+ABI_VERSION :: 3
 
 // Event tags.
 EVENT_WINDOW_RESIZED :: 1
@@ -61,7 +61,7 @@ Byte_Buffer :: struct {
 //
 // The module may retain a copy of this table while it is active. The callbacks
 // and user_data remain valid until the module is shut down.
-Host_Log_Proc :: proc "c" (user_data: rawptr, message: cstring)
+Host_Log_Proc :: proc "c" (user_data: rawptr, level: u32, message: cstring)
 
 Host_Load_Texture_Proc :: proc "c" (user_data: rawptr, path: cstring) -> u32
 

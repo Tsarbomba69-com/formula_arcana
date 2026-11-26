@@ -12,6 +12,14 @@ WINDOW_W :: 1280
 WINDOW_H :: 720
 MODULE_CANDIDATE :: "bin/debug/game_module_candidate." + dynlib.LIBRARY_FILE_EXTENSION
 
+g_console_logger: log.Logger
+
+host_context :: proc() -> runtime.Context {
+	c := runtime.default_context()
+	c.logger = g_console_logger
+	return c
+}
+
 Host_State :: struct {
 	tex_mgr:  platform.Texture_Manager,
 	font_mgr: platform.Font_Manager,
@@ -26,27 +34,33 @@ Game :: struct {
 	reloader:   hot_reload.Dev_Reloader,
 }
 
-host_log :: proc "c" (user_data: rawptr, message: cstring) {
-	context = runtime.default_context()
-	log.info(string(message))
+host_log :: proc "c" (user_data: rawptr, level: u32, message: cstring) {
+	context = host_context()
+	switch log.Level(level) {
+	case .Debug: log.debug(string(message))
+	case .Info: log.info(string(message))
+	case .Warning: log.warn(string(message))
+	case .Error: log.error(string(message))
+	case .Fatal: log.fatal(string(message))
+	}
 }
 
 host_load_texture :: proc "c" (user_data: rawptr, path: cstring) -> u32 {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	id, ok := platform.load_texture_from_file(&state.tex_mgr, path)
 	return ok ? u32(id) : 0
 }
 
 host_load_font :: proc "c" (user_data: rawptr, path: cstring, size: i32) -> u32 {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	id, ok := platform.load_font_from_file(&state.font_mgr, path, size)
 	return ok ? u32(id) : 0
 }
 
 host_measure_text :: proc "c" (user_data: rawptr, text: cstring, size: i32, font_id: u32) -> f32 {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	return state.renderer.measure_text(string(text), size, shared.Font_Id(font_id))
 }
@@ -59,13 +73,13 @@ host_draw_text :: proc "c" (
 	r, g, b, a: u8,
 	font_id: u32,
 ) {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	state.renderer.draw_text(string(text), {x, y}, size, {r, g, b, a}, shared.Font_Id(font_id))
 }
 
 host_fill_rect :: proc "c" (user_data: rawptr, x, y, width, height: f32, r, g, b, a: u8) {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	state.renderer.fill_rect({x, y, width, height}, {r, g, b, a})
 }
@@ -75,7 +89,7 @@ host_outline_rect :: proc "c" (
 	x, y, width, height, thickness: f32,
 	r, g, b, a: u8,
 ) {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	state.renderer.outline_rect({x, y, width, height}, thickness, {r, g, b, a})
 }
@@ -86,19 +100,19 @@ host_draw_texture :: proc "c" (
 	x, y, width, height: f32,
 	r, g, b, a: u8,
 ) {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	state.renderer.draw_texture(shared.Texture_Id(texture_id), {x, y, width, height}, {r, g, b, a})
 }
 
 host_begin_clip :: proc "c" (user_data: rawptr, x, y, width, height: f32) {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	state.renderer.begin_clip({x, y, width, height})
 }
 
 host_end_clip :: proc "c" (user_data: rawptr) {
-	context = runtime.default_context()
+	context = host_context()
 	state := (^Host_State)(user_data)
 	state.renderer.end_clip()
 }
@@ -185,8 +199,9 @@ collect_events :: proc(app: ^Game) -> []hot_reload.Hot_Event {
 }
 
 main :: proc() {
-	context.logger = log.create_console_logger()
-	defer log.destroy_console_logger(context.logger)
+	g_console_logger = log.create_console_logger()
+	defer log.destroy_console_logger(g_console_logger)
+	context = host_context()
 	platform.open_window(WINDOW_W, WINDOW_H, "Formula Arcana")
 	defer platform.close_window()
 

@@ -5,6 +5,7 @@ import "../features"
 import "../hot_reload"
 import "../shared"
 import "base:runtime"
+import "core:log"
 import "core:strings"
 
 MODULE_STATE_VERSION :: 1
@@ -17,6 +18,28 @@ Game_State :: struct {
 @(private = "file")
 g_host: ^hot_reload.Host_API
 g_api: hot_reload.Game_Module_API
+
+module_log_proc :: proc(
+	data: rawptr,
+	level: log.Level,
+	text: string,
+	options: log.Options,
+	location := #caller_location,
+) {
+	if g_host == nil || g_host.log == nil { return }
+	cstr, err := strings.clone_to_cstring(text, context.temp_allocator)
+	if err != nil { return }
+	g_host.log(g_host.user_data, u32(level), cstr)
+}
+
+module_context :: proc() -> runtime.Context {
+	c := runtime.default_context()
+	c.logger = log.Logger {
+		procedure    = module_log_proc,
+		lowest_level = .Debug,
+	}
+	return c
+}
 
 host_load_texture :: proc(path: cstring) -> (shared.Texture_Id, bool) {
 	id := g_host.load_texture(g_host.user_data, path)
@@ -136,7 +159,7 @@ game_initialize :: proc "c" (
 	width, height: i32,
 	snapshot: hot_reload.Byte_Buffer,
 ) -> rawptr {
-	context = runtime.default_context()
+	context = module_context()
 	if host == nil ||
 	   host.abi_version != hot_reload.ABI_VERSION ||
 	   host.struct_size < size_of(hot_reload.Host_API) { return nil }
@@ -171,7 +194,7 @@ game_initialize :: proc "c" (
 
 @(private)
 game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count: u64) {
-	context = runtime.default_context()
+	context = module_context()
 	if raw_state == nil { return }
 	state := (^Game_State)(raw_state)
 	event_array := ([^]hot_reload.Hot_Event)(events)
@@ -223,7 +246,7 @@ game_update :: proc "c" (raw_state: rawptr, events: ^hot_reload.Hot_Event, count
 
 @(private)
 game_draw :: proc "c" (raw_state: rawptr) {
-	context = runtime.default_context()
+	context = module_context()
 	if raw_state == nil { return }
 	state := (^Game_State)(raw_state)
 	features.draw_screen(&state.screen, state.ctx)
@@ -255,7 +278,7 @@ game_snapshot :: proc "c" (
 
 @(private)
 game_shutdown :: proc "c" (raw_state: rawptr) {
-	context = runtime.default_context()
+	context = module_context()
 	if raw_state == nil { return }
 	free((^Game_State)(raw_state))
 }
