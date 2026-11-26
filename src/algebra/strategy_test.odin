@@ -225,8 +225,9 @@ given_a_distributed_formula_when_the_plus_between_constants_is_selected_then_com
 
 	moves := valid_moves(eq, plus_idx)
 
-	testing.expect_value(t, moves.count, 1)
+	testing.expect_value(t, moves.count, 2)
 	testing.expect_value(t, moves.items[0].kind, Move_Kind.Combine_Constants)
+	testing.expect_value(t, moves.items[1].kind, Move_Kind.Commute)
 }
 
 @(test)

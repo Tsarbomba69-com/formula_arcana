@@ -212,31 +212,49 @@ Gameplay_Selection :: struct {
 	term:        Expr_Id,
 }
 
-Gameplay_Animation_Kind :: enum {
-	None,
-	Distribution,
-	Magnet,
+Gameplay_No_Animation :: struct {}
+
+Gameplay_Distribution_Animation :: struct {
+	source_tokens:    Token_List,
+	multiplier_index: int,
+	target_indices:   [MAX_TERMS]int,
+	target_count:     int,
 }
 
-Gameplay_Animation :: struct {
-	kind:                Gameplay_Animation_Kind,
-	active:              bool,
-	elapsed:             f32,
-	duration:            f32,
-	source:              Equation,
-	result:              Equation,
+Gameplay_Magnet_Animation :: struct {
 	source_tokens:       Token_List,
 	result_tokens:       Token_List,
-	multiplier_index:    int,
-	target_indices:      [MAX_TERMS]int,
-	target_count:        int,
 	source_indices:      [MAX_TOKENS]int,
 	destination_indices: [MAX_TOKENS]int,
 	pair_count:          int,
 }
 
+Gameplay_Swap_Animation :: struct {
+	source_tokens: Token_List,
+	result_tokens: Token_List,
+	swap_start:    int, // first token of the swapped region
+	swap_a_len:    int, // tokens in term A (left of the operator)
+	swap_b_len:    int, // tokens in term B (right of the operator)
+}
+
+Gameplay_Animation_Payload :: union {
+	Gameplay_No_Animation,
+	Gameplay_Distribution_Animation,
+	Gameplay_Magnet_Animation,
+	Gameplay_Swap_Animation, // Commute: term A and term B orbit into each other's slot
+}
+
+Gameplay_Animation :: struct {
+	elapsed:  f32,
+	duration: f32,
+	source:   Equation,
+	result:   Equation,
+	payload:  Gameplay_Animation_Payload,
+}
+
 GP_DISTRIBUTION_PASS_DURATION :: f32(0.52)
 GP_DISTRIBUTION_SETTLE_DURATION :: f32(0.24)
+GP_SWAP_DURATION :: f32(0.9)
 
 Gameplay_State :: struct {
 	puzzle:            Puzzle,
@@ -344,7 +362,7 @@ update_gameplay :: proc(s: ^Gameplay_State, events: []core.Event) -> core.Naviga
 		case shared.Tick_Input: if !s.paused {
 					dt := max(input.dt, 0)
 					if !workspace_solved(&s.workspace) { s.elapsed += dt }
-					if s.formula_animation.active {
+					if s.formula_animation.duration > 0 {
 						s.formula_animation.elapsed += dt
 						if s.formula_animation.elapsed >= s.formula_animation.duration {
 							s.formula_animation = {}
@@ -476,28 +494,38 @@ gameplay_apply_selected :: proc(s: ^Gameplay_State) -> bool {
 	s.formula_animation = {}
 	if !workspace_apply(&s.workspace) { return false }
 	animation := Gameplay_Animation {
-		active           = true,
-		source           = before,
-		result           = workspace_current(&s.workspace),
-		multiplier_index = -1,
+		source = before,
+		result = workspace_current(&s.workspace),
 	}
 	if move.kind == .Distribute {
-		animation.kind = .Distribution
-		gameplay_prepare_formula_animation(&animation, move)
-		if animation.target_count > 0 {
+		distribution := Gameplay_Distribution_Animation {
+			multiplier_index = -1,
+		}
+		gameplay_prepare_formula_animation(&distribution, before, move)
+		if distribution.target_count > 0 {
 			animation.duration =
-				f32(animation.target_count) * GP_DISTRIBUTION_PASS_DURATION +
+				f32(distribution.target_count) * GP_DISTRIBUTION_PASS_DURATION +
 				GP_DISTRIBUTION_SETTLE_DURATION
+			animation.payload = distribution
 			s.formula_animation = animation
 		}
 	} else if move.kind == .Combine_Constants ||
 	   move.kind == .Combine_Like_Terms ||
 	   move.kind == .Add_To_Both ||
 	   move.kind == .Subtract_From_Both {
-		animation.kind = .Magnet
-		gameplay_prepare_magnet_animation(&animation, move)
-		if animation.pair_count > 0 {
+		magnet: Gameplay_Magnet_Animation
+		gameplay_prepare_magnet_animation(&magnet, before, animation.result, move)
+		if magnet.pair_count > 0 {
 			animation.duration = 0.72
+			animation.payload = magnet
+			s.formula_animation = animation
+		}
+	} else if move.kind == .Commute {
+		swap: Gameplay_Swap_Animation
+		gameplay_prepare_swap_animation(&swap, before, animation.result)
+		if swap.swap_a_len > 0 {
+			animation.duration = GP_SWAP_DURATION
+			animation.payload = swap
 			s.formula_animation = animation
 		}
 	}
@@ -506,8 +534,12 @@ gameplay_apply_selected :: proc(s: ^Gameplay_State) -> bool {
 	return true
 }
 
-gameplay_prepare_formula_animation :: proc(animation: ^Gameplay_Animation, move: Move) {
-	animation.source_tokens = tokenize(animation.source)
+gameplay_prepare_formula_animation :: proc(
+	animation: ^Gameplay_Distribution_Animation,
+	source: Equation,
+	move: Move,
+) {
+	animation.source_tokens = tokenize(source)
 	open_index := -1
 	for i in 0 ..< animation.source_tokens.count {
 		token := animation.source_tokens.items[i]
@@ -560,14 +592,83 @@ gameplay_prepare_formula_animation :: proc(animation: ^Gameplay_Animation, move:
 	}
 }
 
-gameplay_prepare_magnet_animation :: proc(animation: ^Gameplay_Animation, move: Move) {
-	animation.source_tokens = tokenize(animation.source)
-	animation.result_tokens = tokenize(animation.result)
-	mapping := move_animation_map(animation.source, animation.result, move)
+gameplay_prepare_magnet_animation :: proc(
+	animation: ^Gameplay_Magnet_Animation,
+	source, result: Equation,
+	move: Move,
+) {
+	animation.source_tokens = tokenize(source)
+	animation.result_tokens = tokenize(result)
+	mapping := move_animation_map(source, result, move)
 	for pair in mapping.pairs[:mapping.count] {
 		animation.source_indices[animation.pair_count] = pair.source_token
 		animation.destination_indices[animation.pair_count] = pair.destination_token
 		animation.pair_count += 1
+	}
+}
+
+gp_token_same :: proc(a, b: Token) -> bool {
+	x, y := a, b
+	return a.kind == b.kind && label_str(&x.text) == label_str(&y.text)
+}
+
+// A constant/variable token glued to its neighbour (the "2" in "2x") belongs to the same term.
+gp_token_is_atom :: proc(t: Token) -> bool {
+	return t.kind == .Constant || t.kind == .Variable
+}
+
+// A Commute turns `A op B` into `B op A`. Rather than trust token->term ids, find the
+// two blocks by diffing the token streams (same token count, only the region moves):
+//
+//   source: [ A: start .. start+a_len )  OP  [ B: .. start+a_len+1+b_len )
+//   result: [ B ]                        OP  [ A ]
+//
+// Leaves swap_a_len == 0 (no animation, the result just appears) if nothing matches.
+gameplay_prepare_swap_animation :: proc(
+	animation: ^Gameplay_Swap_Animation,
+	source, result: Equation,
+) {
+	animation.source_tokens = tokenize(source)
+	animation.result_tokens = tokenize(result)
+	src, res := &animation.source_tokens, &animation.result_tokens
+	if src.count != res.count || src.count < 3 { return }
+
+	lo, hi := -1, -1
+	for i in 0 ..< src.count {
+		if !gp_token_same(src.items[i], res.items[i]) {
+			if lo < 0 { lo = i }
+			hi = i
+		}
+	}
+	if lo < 0 { return } 	// A and B look identical: nothing to show
+	for lo > 0 && gp_token_is_atom(src.items[lo - 1]) { lo -= 1 }
+	for hi + 1 < src.count && gp_token_is_atom(src.items[hi + 1]) { hi += 1 }
+
+	n := hi - lo + 1
+	for a_len in 1 ..< n - 1 {
+		b_len := n - a_len - 1
+		op := lo + a_len
+		if src.items[op].kind != .Operator { continue }
+		if !gp_token_same(src.items[op], res.items[lo + b_len]) { continue }
+
+		ok := true
+		for k in 0 ..< b_len {
+			if !gp_token_same(src.items[op + 1 + k], res.items[lo + k]) { ok = false; break }
+		}
+		if ok {
+			for k in 0 ..< a_len {
+				if !gp_token_same(src.items[lo + k], res.items[lo + b_len + 1 + k]) {
+					ok = false
+					break
+				}
+			}
+		}
+		if ok {
+			animation.swap_start = lo
+			animation.swap_a_len = a_len
+			animation.swap_b_len = b_len
+			return
+		}
 	}
 }
 

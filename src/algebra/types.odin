@@ -1,6 +1,6 @@
 package algebra
 
-MAX_NODES :: 32
+MAX_NODES :: 64
 MAX_TOKENS :: 24
 MAX_MOVES :: 8
 MAX_TERMS :: 16
@@ -108,6 +108,8 @@ Move_Kind :: enum {
 	Divide_Both,
 	Multiply_Both, // player-chosen: every term of both sides
 	Apply_Function, // player-chosen: the function wraps each complete side
+	Associate,
+	Commute,
 }
 
 Move_Kinds :: bit_set[Move_Kind]

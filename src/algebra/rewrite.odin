@@ -143,6 +143,9 @@ alg_normalize :: proc(specs: []Spec, name: u8) -> (out: Spec_List) {
 	}
 	if var_total != 0 { spec_push(&out, Spec{kind = .Var, value = var_total, name = name}) }
 	if const_total != 0 { spec_push(&out, Spec{kind = .Const, value = const_total}) }
+	for s in specs {
+		if s.kind == .Node { spec_push(&out, s) }
+	}
 	if out.count == 0 { spec_push(&out, Spec{kind = .Const, value = 0}) }
 	return
 }
@@ -198,7 +201,7 @@ alg_perform :: proc(eq: ^Equation, m: Move) -> (out: Equation, ok: bool) {
 	name := alg_eq_name(eq)
 	left, right := alg_side_specs(eq, .Left), alg_side_specs(eq, .Right)
 
-	switch m.kind {
+	#partial switch m.kind {
 	case .Distribute:
 		specs := m.side == .Left ? &left : &right
 		info := alg_analyze(eq, m.side)
@@ -239,6 +242,14 @@ alg_perform :: proc(eq: ^Equation, m: Move) -> (out: Equation, ok: bool) {
 		left = alg_normalize(left.items[:left.count], name)
 		right = alg_normalize(right.items[:right.count], name)
 
+	case .Commute:
+		root := m.side == .Left ? eq.lhs : eq.rhs
+		chain_root := alg_commute_chain_root(eq, root, m.target)
+		if chain_root == NO_EXPR { return eq^, false }
+		pair_index := 0
+		if !alg_commute_chain_ordinal(eq, chain_root, m.target, &pair_index) { return eq^, false }
+		return eq^, alg_swap_commute_pair(eq, m.side, chain_root, pair_index)
+
 	case .Multiply_Both, .Apply_Function: return eq^, false // player requests go through apply_transformation
 
 	case .Divide_Both:
@@ -263,10 +274,27 @@ apply_move :: proc(eq: Equation, m: Move) -> (result: Equation, ok: bool) {
 	for c in all.items[:all.count] {
 		if c == m { offered = true }
 	}
+	if !offered { offered = alg_is_contextual_balance_move(&eq, m) }
+	if !offered { offered = alg_is_contextual_commute_move(&eq, m) }
 	if !offered { return eq, false }
 	out, built := alg_perform(&eq, m)
 	if !built { return eq, false }
 	return out, true
+}
+
+@(private = "package")
+alg_is_contextual_balance_move :: proc(eq: ^Equation, m: Move) -> bool {
+	if m.kind != .Add_To_Both && m.kind != .Subtract_From_Both { return false }
+	if m.target == NO_EXPR || m.operand.coef < 0 { return false }
+	info := alg_analyze(eq, m.side)
+	for t in info.items[:info.count] {
+		if t.node != m.target || (t.kind != .Var && t.kind != .Const) { continue }
+		if m.operand.has_var != (t.kind == .Var) || m.operand.coef != abs(t.value) { return false }
+		if t.value < 0 && m.kind != .Add_To_Both { return false }
+		if t.value > 0 && m.kind != .Subtract_From_Both { return false }
+		return true
+	}
+	return false
 }
 
 // ============================================================================

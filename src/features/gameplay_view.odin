@@ -294,7 +294,7 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 	// Formula box + tiles
 	box := gp_rect_formula_box(ox)
 	gp_box(v, box, {5, 16, 24, 255}, solved ? GP_GREEN : GP_TEAL, 1.5)
-	if s.formula_animation.active {
+	if s.formula_animation.duration > 0 {
 		gp_draw_formula_animation(v, box)
 	} else {
 		gp_draw_tiles(v)
@@ -320,34 +320,49 @@ gp_draw_formula_panel :: proc(v: ^Gp_View) {
 }
 
 gp_draw_formula_animation :: proc(v: ^Gp_View, box: shared.Rect) {
-	s := v.s
-	a := s.formula_animation
-	if a.kind == .Magnet {
-		gp_draw_magnet_animation(v, box)
-		return
+	a := v.s.formula_animation
+	switch payload in a.payload {
+	case Gameplay_No_Animation: return
+	case Gameplay_Magnet_Animation: gp_draw_magnet_animation(v, box, a, payload)
+	case Gameplay_Swap_Animation: gp_draw_swap_animation(v, box, a, payload)
+	case Gameplay_Distribution_Animation: gp_draw_distribution_animation(v, box, a, payload)
 	}
-	pass_time := f32(a.target_count) * GP_DISTRIBUTION_PASS_DURATION
+	return
+}
+
+gp_draw_distribution_animation :: proc(
+	v: ^Gp_View,
+	box: shared.Rect,
+	a: Gameplay_Animation,
+	payload: Gameplay_Distribution_Animation,
+) {
+	s := v.s
+	pass_time := f32(payload.target_count) * GP_DISTRIBUTION_PASS_DURATION
 	center_x := box.x + box.w / 2
 
 	if a.elapsed < pass_time {
 		stage := int(a.elapsed / GP_DISTRIBUTION_PASS_DURATION)
-		stage = min(stage, a.target_count - 1)
+		stage = min(stage, payload.target_count - 1)
 		stage_elapsed := a.elapsed - f32(stage) * GP_DISTRIBUTION_PASS_DURATION
 		stage_progress := clamp(stage_elapsed / GP_DISTRIBUTION_PASS_DURATION, 0, 1)
-		target_index := a.target_indices[stage]
-		gp_draw_distribution_source(v, box, a.source_tokens, target_index, 255)
+		target_index := payload.target_indices[stage]
+		gp_draw_distribution_source(v, box, payload.source_tokens, target_index, 255)
 
 		label_buf: [32]u8
 		label := fmt.bprintf(
 			label_buf[:],
 			"PASSING FACTOR · %02d / %02d",
 			stage + 1,
-			a.target_count,
+			payload.target_count,
 		)
 		gp_text(v, label, center_x, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
 
-		source_rect := gp_formula_tile_rect(box, a.source_tokens.count, a.multiplier_index)
-		target_rect := gp_formula_tile_rect(box, a.source_tokens.count, target_index)
+		source_rect := gp_formula_tile_rect(
+			box,
+			payload.source_tokens.count,
+			payload.multiplier_index,
+		)
+		target_rect := gp_formula_tile_rect(box, payload.source_tokens.count, target_index)
 		start_x, start_y := source_rect.x + source_rect.w / 2, source_rect.y + source_rect.h / 2
 		end_x, end_y := target_rect.x + target_rect.w / 2, target_rect.y + target_rect.h / 2
 		travel := clamp(stage_progress / 0.72, 0, 1)
@@ -358,14 +373,15 @@ gp_draw_formula_animation :: proc(v: ^Gp_View, box: shared.Rect) {
 
 		card := shared.Rect{card_x - 22, card_y - 20, 44, 40}
 		gp_box(v, card, GP_TILE_CONST, GP_TEAL, 1.5)
-		card_text := label_str(&a.source_tokens.items[a.multiplier_index].text)
+		multiplier_token := payload.source_tokens.items[payload.multiplier_index]
+		card_text := label_str(&multiplier_token.text)
 		gp_text(v, card_text, card_x, card_y, 20, GP_AMBER, s.fonts.math, .Center)
 		return
 	}
 
 	settle_progress := clamp((a.elapsed - pass_time) / GP_DISTRIBUTION_SETTLE_DURATION, 0, 1)
 	old_alpha := u8(math.round(255 * (1 - settle_progress)))
-	gp_draw_distribution_source(v, box, a.source_tokens, -1, old_alpha)
+	gp_draw_distribution_source(v, box, payload.source_tokens, -1, old_alpha)
 	gp_text(v, "DISTRIBUTED", center_x, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
 }
 
@@ -432,37 +448,41 @@ gp_draw_formula_token :: proc(
 	}
 }
 
-gp_draw_magnet_animation :: proc(v: ^Gp_View, box: shared.Rect) {
+gp_draw_magnet_animation :: proc(
+	v: ^Gp_View,
+	box: shared.Rect,
+	a: Gameplay_Animation,
+	payload: Gameplay_Magnet_Animation,
+) {
 	s := v.s
-	a := s.formula_animation
 	progress := clamp(a.elapsed / a.duration, 0, 1)
-	gp_draw_distribution_source(v, box, a.source_tokens, -1, 255)
+	gp_draw_distribution_source(v, box, payload.source_tokens, -1, 255)
 
 	// Show the destination equation as a dim magnet field while changed tokens
 	// leave their old positions and converge on the result.
 	ghost_alpha := u8(math.round(52 + progress * 70))
-	for i in 0 ..< a.result_tokens.count {
-		if gp_token_is_magnetic_destination(a, i) {
-			r := gp_formula_tile_rect(box, a.result_tokens.count, i)
+	for i in 0 ..< payload.result_tokens.count {
+		if gp_token_is_magnetic_destination(payload, i) {
+			r := gp_formula_tile_rect(box, payload.result_tokens.count, i)
 			color := GP_TEAL
 			color[3] = ghost_alpha
 			gp_outline(v, r, 2, color)
 			gp_draw_formula_token(
 				v,
-				a.result_tokens.items[i],
+				payload.result_tokens.items[i],
 				r,
-				gp_formula_font_size(box, a.result_tokens.count),
+				gp_formula_font_size(box, payload.result_tokens.count),
 				ghost_alpha,
 				false,
 			)
 		}
 	}
 
-	for i in 0 ..< a.pair_count {
-		source_index := a.source_indices[i]
-		destination_index := a.destination_indices[i]
-		from := gp_formula_tile_rect(box, a.source_tokens.count, source_index)
-		to := gp_formula_tile_rect(box, a.result_tokens.count, destination_index)
+	for i in 0 ..< payload.pair_count {
+		source_index := payload.source_indices[i]
+		destination_index := payload.destination_indices[i]
+		from := gp_formula_tile_rect(box, payload.source_tokens.count, source_index)
+		to := gp_formula_tile_rect(box, payload.result_tokens.count, destination_index)
 		stagger := f32(i) * 0.035
 		local := clamp((progress - stagger) / max(1 - stagger, 0.001), 0, 1)
 		eased := 1 - math.pow(1 - local, 3)
@@ -473,13 +493,13 @@ gp_draw_magnet_animation :: proc(v: ^Gp_View, box: shared.Rect) {
 
 		// Fade the original token at its old location as the magnetic copy moves.
 		remaining_alpha := u8(math.round(255 * (1 - eased)))
-		old_token := a.source_tokens.items[source_index]
+		old_token := payload.source_tokens.items[source_index]
 		gp_fill(v, from, {5, 16, 24, 255})
 		gp_draw_formula_token(
 			v,
 			old_token,
 			from,
-			gp_formula_font_size(box, a.source_tokens.count),
+			gp_formula_font_size(box, payload.source_tokens.count),
 			remaining_alpha,
 			false,
 		)
@@ -510,11 +530,95 @@ gp_draw_magnet_animation :: proc(v: ^Gp_View, box: shared.Rect) {
 	)
 }
 
-gp_token_is_magnetic_destination :: proc(a: Gameplay_Animation, index: int) -> bool {
+gp_token_is_magnetic_destination :: proc(a: Gameplay_Magnet_Animation, index: int) -> bool {
 	for i in 0 ..< a.pair_count {
 		if a.destination_indices[i] == index { return true }
 	}
 	return false
+}
+
+// Half-turn orbit from `from` to `to`: x follows the circle around the midpoint, y is capped
+// so long hops stay inside the formula box. A (moving right) passes over, B (moving left)
+// passes under, because both turn the same way around their own midpoint.
+gp_swap_orbit :: proc(from, to: shared.Rect, theta, cap: f32) -> (x, y: f32) {
+	fx, fy := from.x + from.w / 2, from.y + from.h / 2
+	tx, ty := to.x + to.w / 2, to.y + to.h / 2
+	mx, my := (fx + tx) / 2, (fy + ty) / 2
+	hx, hy := fx - mx, fy - my
+	x = mx + hx * math.cos(theta) - hy * math.sin(theta)
+	y = my + hy * math.cos(theta) + clamp(hx, -cap, cap) * math.sin(theta)
+	return
+}
+
+gp_draw_swap_animation :: proc(
+	v: ^Gp_View,
+	box: shared.Rect,
+	a: Gameplay_Animation,
+	payload: Gameplay_Swap_Animation,
+) {
+	s := v.s
+	progress := clamp(a.elapsed / a.duration, 0, 1)
+	eased := progress * progress * (3 - 2 * progress)
+	theta := eased * math.PI
+
+	count := payload.source_tokens.count
+	font := gp_formula_font_size(box, count)
+	a_lo := payload.swap_start
+	op := a_lo + payload.swap_a_len
+	b_lo := op + 1
+	end := b_lo + payload.swap_b_len // exclusive
+	cap := box.h * 0.28
+
+	// Everything outside the swapped region stays put.
+	for i in 0 ..< count {
+		if i >= a_lo && i < end { continue }
+		r := gp_formula_tile_rect(box, count, i)
+		gp_draw_formula_token(v, payload.source_tokens.items[i], r, font, 255, true)
+	}
+
+	// Destination slots fade in as a hint of where each term is heading.
+	ghost := GP_TEAL
+	ghost[3] = u8(math.round(40 + 90 * progress))
+	for i in a_lo ..< end {
+		if i == a_lo + payload.swap_b_len { continue } 	// the operator slot is drawn below
+		gp_outline(v, gp_formula_tile_rect(box, count, i), 1.5, ghost)
+	}
+
+	// The operator slides to its new slot (a no-op when both terms have the same length).
+	op_from := gp_formula_tile_rect(box, count, op)
+	op_to := gp_formula_tile_rect(box, count, a_lo + payload.swap_b_len)
+	op_rect := op_from
+	op_rect.x += (op_to.x - op_from.x) * eased
+	op_rect.y += (op_to.y - op_from.y) * eased
+	gp_fill(v, op_rect, {5, 16, 24, 255})
+	gp_draw_formula_token(v, payload.source_tokens.items[op], op_rect, font, 255, true)
+
+	// B first (underneath), then A on top.
+	for k in 0 ..< payload.swap_b_len {
+		from := gp_formula_tile_rect(box, count, b_lo + k)
+		to := gp_formula_tile_rect(box, count, a_lo + k)
+		gp_draw_swap_token(v, payload.source_tokens.items[b_lo + k], from, to, theta, cap, font)
+	}
+	for k in 0 ..< payload.swap_a_len {
+		from := gp_formula_tile_rect(box, count, a_lo + k)
+		to := gp_formula_tile_rect(box, count, a_lo + payload.swap_b_len + 1 + k)
+		gp_draw_swap_token(v, payload.source_tokens.items[a_lo + k], from, to, theta, cap, font)
+	}
+
+	gp_text(v, "SWAPPING TERMS", box.x + box.w / 2, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
+}
+
+gp_draw_swap_token :: proc(
+	v: ^Gp_View,
+	token: Token,
+	from, to: shared.Rect,
+	theta, cap, font: f32,
+) {
+	x, y := gp_swap_orbit(from, to, theta, cap)
+	r := shared.Rect{x - from.w / 2, y - from.h / 2, from.w, from.h}
+	gp_fill(v, r, {5, 16, 24, 255}) // hide whatever it passes over
+	gp_draw_formula_token(v, token, r, font, 255, true)
+	gp_outline(v, r, 1.5, GP_TEAL)
 }
 
 gp_draw_tiles :: proc(v: ^Gp_View) {

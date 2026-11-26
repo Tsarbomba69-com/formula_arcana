@@ -161,7 +161,7 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 	}
 
 	// ---- title ----
-	switch m.kind {
+	#partial switch m.kind {
 	case .Distribute:
 		w_str(&w, "Distribute ")
 		w_signed(&w, m.operand.coef)
@@ -176,6 +176,7 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 	case .Divide_Both:
 		w_str(&w, "Divide by ")
 		w_signed(&w, m.operand.coef)
+	case .Commute: w_str(&w, "Commute terms")
 	case .Multiply_Both:
 		w_str(&w, "Multiply by ")
 		w_signed(&w, m.operand.coef)
@@ -193,7 +194,7 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 		label_set(&view.title, label_str(&view.action))
 	}
 	w.n = 0
-	switch m.kind {
+	#partial switch m.kind {
 	case .Distribute:
 		w_str(&w, DISTRIBUTIVE_ADDITION_RULE)
 		label_set(&view.rule, w_text(&w))
@@ -207,12 +208,13 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 	case .Divide_Both: w_str(&w, "a = b  →  a ÷ c = b ÷ c")
 	case .Multiply_Both: w_str(&w, "a = b  →  a × c = b × c")
 	case .Apply_Function: w_str(&w, "a = b  →  f(a) = f(b)")
+	case .Commute: w_str(&w, "a + b = b + a")
 	}
 	if m.kind != .Distribute { label_set(&view.rule, w_text(&w)) }
 
 	// ---- heading ----
 	w.n = 0
-	switch m.kind {
+	#partial switch m.kind {
 	case .Distribute:
 		w_str(&w, "AFTER DISTRIBUTING ")
 		w_signed(&w, m.operand.coef)
@@ -231,13 +233,14 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 		w_str(&w, "AFTER MULTIPLYING BY ")
 		w_signed(&w, m.operand.coef)
 	case .Apply_Function: w_str(&w, "AFTER APPLYING FUNCTION")
+	case .Commute: w_str(&w, "AFTER COMMUTING TERMS")
 	}
 	label_set(&view.heading, w_text(&w))
 
 	// ---- hint ----
 	side_word := m.side == .Left ? "left" : "right"
 	w.n = 0
-	switch m.kind {
+	#partial switch m.kind {
 	case .Distribute:
 		w_str(&w, "Multiply ")
 		w_signed(&w, m.operand.coef)
@@ -262,20 +265,21 @@ describe_move :: proc(eq: Equation, m: Move) -> (view: Move_View) {
 	case .Divide_Both: w_str(&w, "Divide both sides by the coefficient.")
 	case .Multiply_Both: w_str(&w, "Multiply both sides by the factor.")
 	case .Apply_Function: w_str(&w, "Apply the transformation to both sides.")
+	case .Commute: w_str(&w, "Swap the adjacent signed terms.")
 	}
 	label_set(&view.hint, w_text(&w))
 
 	// ---- preview (raw, unsimplified) ----
 	w.n = 0
-	switch m.kind {
-	case .Distribute, .Combine_Constants, .Combine_Like_Terms:
+	#partial switch m.kind {
+	case .Distribute, .Combine_Constants, .Combine_Like_Terms, .Commute:
 		if result, ok := alg_perform(&eq, m); ok {
 				out: [LABEL_CAP * 2]u8
 				w_str(&w, format_equation(result, out[:]))
 			}
 	case .Add_To_Both, .Subtract_From_Both, .Divide_Both, .Multiply_Both:
 		op: string
-		switch m.kind {
+		#partial switch m.kind {
 		case .Add_To_Both: op = " + "
 		case .Subtract_From_Both: op = " − "
 		case .Divide_Both: op = " ÷ "
@@ -311,7 +315,7 @@ explain_move :: proc(eq: Equation, m: Move) -> (note: Label) {
 		buf = buf[:],
 	}
 
-	switch m.kind {
+	#partial switch m.kind {
 	case .Distribute:
 		info := alg_analyze(&eq, m.side)
 		for t in info.items[:info.count] {
@@ -358,6 +362,7 @@ explain_move :: proc(eq: Equation, m: Move) -> (note: Label) {
 		w_signed(&w, m.operand.coef)
 		w_str(&w, ".")
 	case .Apply_Function: w_str(&w, "Applied function to both sides.")
+	case .Commute: w_str(&w, "Swapped adjacent signed terms.")
 	}
 	label_set(&note, w_text(&w))
 	return

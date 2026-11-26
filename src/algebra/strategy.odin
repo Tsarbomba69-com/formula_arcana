@@ -96,8 +96,9 @@ alg_all_moves :: proc(eq: ^Equation) -> (moves: Move_List) {
 // Does `term` (an additive-term node id) belong to what the move acts on?
 @(private = "package")
 alg_move_touches :: proc(eq: ^Equation, m: Move, term: Expr_Id) -> bool {
-	switch m.kind {
+	#partial switch m.kind {
 	case .Distribute, .Add_To_Both, .Subtract_From_Both: return m.target == term
+	case .Associate, .Commute: return m.target == term
 	case .Multiply_Both, .Apply_Function: return false // player requests, never offered as steps
 	case .Combine_Constants, .Combine_Like_Terms:
 		info := alg_analyze(eq, m.side)
@@ -133,6 +134,224 @@ alg_is_implicit_mul_at :: proc(tokens: ^Token_List, idx: int) -> bool {
 	return left_can_mul && right_can_mul
 }
 
+@(private = "package")
+alg_token_is_operand :: proc(token: Token) -> bool {
+	if token.kind == .Constant || token.kind == .Variable { return true }
+	t := token
+	return token.kind == .Paren && label_str(&t.text) == ")"
+}
+
+@(private = "package")
+alg_additive_operator_ordinal :: proc(
+	tokens: ^Token_List,
+	tok_idx: int,
+) -> (
+	ordinal: int,
+	binary: bool,
+) {
+	if tok_idx < 0 || tok_idx >= tokens.count { return }
+	tok := tokens.items[tok_idx]
+	if tok.kind != .Operator { return }
+	txt := label_str(&tok.text)
+	if txt != "+" && txt != MINUS { return }
+	for i in 0 ..< tokens.count {
+		current := tokens.items[i]
+		if current.side != tok.side || current.kind != .Operator { continue }
+		current_text := label_str(&current.text)
+		if current_text != "+" && current_text != MINUS { continue }
+		prev_is_operand :=
+			i > 0 &&
+			tokens.items[i - 1].side == tok.side &&
+			alg_token_is_operand(tokens.items[i - 1])
+		if !prev_is_operand { continue } 	// Unary sign, not a commutable operator.
+		if i == tok_idx { binary = true; return }
+		if i < tok_idx { ordinal += 1 }
+	}
+	return
+}
+
+@(private = "package")
+alg_additive_operator_at :: proc(eq: ^Equation, id: Expr_Id, ordinal: ^int) -> Expr_Id {
+	b, ok := alg_node(eq, id).(Bin)
+	if !ok { return NO_EXPR }
+	if target := alg_additive_operator_at(eq, b.left, ordinal); target != NO_EXPR { return target }
+	if b.op == .Add || b.op == .Sub {
+		if ordinal^ == 0 { return id }
+		ordinal^ -= 1
+	}
+	return alg_additive_operator_at(eq, b.right, ordinal)
+}
+
+@(private = "package")
+alg_token_commute_target :: proc(eq: ^Equation, tokens: ^Token_List, tok_idx: int) -> Expr_Id {
+	ordinal, binary := alg_additive_operator_ordinal(tokens, tok_idx)
+	if !binary { return NO_EXPR }
+	root := tokens.items[tok_idx].side == .Left ? eq.lhs : eq.rhs
+	return alg_additive_operator_at(eq, root, &ordinal)
+}
+
+@(private = "package")
+alg_tree_contains :: proc(eq: ^Equation, root, target: Expr_Id) -> bool {
+	if root == target { return true }
+	if b, ok := alg_node(eq, root).(Bin); ok {
+		return alg_tree_contains(eq, b.left, target) || alg_tree_contains(eq, b.right, target)
+	}
+	return false
+}
+
+@(private = "package")
+alg_is_contextual_commute_move :: proc(eq: ^Equation, m: Move) -> bool {
+	if m.kind != .Commute || m.target == NO_EXPR { return false }
+	b, ok := alg_node(eq, m.target).(Bin)
+	if !ok || (b.op != .Add && b.op != .Sub) { return false }
+	root := m.side == .Left ? eq.lhs : eq.rhs
+	return alg_tree_contains(eq, root, m.target)
+}
+
+@(private = "package")
+alg_commute_chain_root :: proc(
+	eq: ^Equation,
+	root, target: Expr_Id,
+	current: Expr_Id = NO_EXPR,
+) -> Expr_Id {
+	b, ok := alg_node(eq, root).(Bin)
+	if !ok { return NO_EXPR }
+	if b.op == .Mul {
+		if found := alg_commute_chain_root(eq, b.left, target); found != NO_EXPR { return found }
+		return alg_commute_chain_root(eq, b.right, target)
+	}
+	chain := current == NO_EXPR ? root : current
+	if root == target { return chain }
+	if found := alg_commute_chain_root(eq, b.left, target, chain);
+	   found != NO_EXPR { return found }
+	return alg_commute_chain_root(eq, b.right, target, chain)
+}
+
+@(private = "package")
+alg_commute_chain_ordinal :: proc(
+	eq: ^Equation,
+	root, target: Expr_Id,
+	ordinal: ^int,
+) -> (
+	found: bool,
+) {
+	b, ok := alg_node(eq, root).(Bin)
+	if !ok || b.op == .Mul { return false }
+	if alg_commute_chain_ordinal(eq, b.left, target, ordinal) { return true }
+	if root == target { return true }
+	ordinal^ += 1
+	return alg_commute_chain_ordinal(eq, b.right, target, ordinal)
+}
+
+@(private = "package")
+alg_collect_chain_operators :: proc(
+	eq: ^Equation,
+	root: Expr_Id,
+	operators: ^[MAX_NODES]Expr_Id,
+	count: ^int,
+) {
+	b, ok := alg_node(eq, root).(Bin)
+	if !ok || b.op == .Mul { return }
+	alg_collect_chain_operators(eq, b.left, operators, count)
+	operators[count^] = root
+	count^ += 1
+	alg_collect_chain_operators(eq, b.right, operators, count)
+}
+
+@(private = "package")
+alg_find_parent_link :: proc(
+	eq: ^Equation,
+	root, target: Expr_Id,
+) -> (
+	parent: Expr_Id,
+	is_left: bool,
+	found: bool,
+) {
+	b, ok := alg_node(eq, root).(Bin)
+	if !ok { return }
+	if b.left == target { return root, true, true }
+	if b.right == target { return root, false, true }
+	if nested_parent, nested_left, nested_found := alg_find_parent_link(eq, b.left, target);
+	   nested_found {
+		return nested_parent, nested_left, true
+	}
+	return alg_find_parent_link(eq, b.right, target)
+}
+
+@(private = "package")
+alg_set_term_intrinsic_sign :: proc(eq: ^Equation, term: Expr_Id, negative: bool) -> Expr_Id {
+	switch n in alg_node(eq, term) {
+	case Num:
+		eq.nodes[term] = Num{negative ? -abs(n.value) : abs(n.value)}
+		return term
+	case Var:
+		if !negative { return term }
+		minus_one := alg_new(eq, Num{-1})
+		if minus_one == NO_EXPR { return NO_EXPR }
+		return alg_new(eq, Bin{.Mul, minus_one, term})
+	case Bin:
+		if n.op == .Mul {
+			if coefficient, ok := alg_node(eq, n.left).(Num); ok {
+				eq.nodes[n.left] = Num{negative ? -abs(coefficient.value) : abs(coefficient.value)}
+				return term
+			}
+			if coefficient, ok := alg_node(eq, n.right).(Num); ok {
+				eq.nodes[n.right] = Num {
+					negative ? -abs(coefficient.value) : abs(coefficient.value),
+				}
+				return term
+			}
+		}
+		if !negative { return term }
+		minus_one := alg_new(eq, Num{-1})
+		if minus_one == NO_EXPR { return NO_EXPR }
+		return alg_new(eq, Bin{.Mul, minus_one, term})
+	}
+	return NO_EXPR
+}
+
+@(private = "package")
+alg_swap_commute_pair :: proc(eq: ^Equation, side: Side, root: Expr_Id, pair_index: int) -> bool {
+	terms: Sum_List
+	alg_collect(eq, root, false, &terms)
+	if pair_index < 0 || pair_index + 1 >= terms.count { return false }
+	side_root := side == .Left ? eq.lhs : eq.rhs
+	parent, parent_left, has_parent := alg_find_parent_link(eq, side_root, root)
+	negative: [MAX_TERMS]bool
+	for i in 0 ..< terms.count {
+		negative[i] = alg_term_negative(eq, terms.items[i])
+	}
+	terms.items[pair_index], terms.items[pair_index + 1] =
+		terms.items[pair_index + 1], terms.items[pair_index]
+	negative[pair_index], negative[pair_index + 1] = negative[pair_index + 1], negative[pair_index]
+	for i in 0 ..< terms.count {
+		node := alg_set_term_intrinsic_sign(eq, terms.items[i].node, negative[i] && i == 0)
+		if node == NO_EXPR { return false }
+		terms.items[i].node = node
+	}
+
+	operators: [MAX_NODES]Expr_Id
+	operator_count := 0
+	alg_collect_chain_operators(eq, root, &operators, &operator_count)
+	if operator_count != terms.count - 1 { return false }
+	acc := terms.items[0].node
+	for i in 0 ..< operator_count {
+		node := operators[i]
+		next := terms.items[i + 1]
+		op: Binary_Op = negative[i + 1] ? .Sub : .Add
+		eq.nodes[node] = Bin{op, acc, next.node}
+		acc = node
+	}
+	new_root := operators[operator_count - 1]
+	if !has_parent {
+		if side == .Left { eq.lhs = new_root } else { eq.rhs = new_root }
+	} else if parent_bin, ok := alg_node(eq, parent).(Bin); ok {
+		if parent_left { parent_bin.left = new_root } else { parent_bin.right = new_root }
+		eq.nodes[parent] = parent_bin
+	}
+	return true
+}
+
 // Checks whether a selected token at `tok_idx` targets move `m`.
 @(private = "package")
 alg_token_touches_move :: proc(eq: ^Equation, tokens: ^Token_List, tok_idx: int, m: Move) -> bool {
@@ -142,6 +361,9 @@ alg_token_touches_move :: proc(eq: ^Equation, tokens: ^Token_List, tok_idx: int,
 
 	op_text := label_str(&tok.text)
 	if op_text == "=" { return false }
+	if m.kind == .Commute {
+		return tok.kind == .Operator && alg_token_commute_target(eq, tokens, tok_idx) == m.target
+	}
 
 	// Explicit or implicit multiplication around a .Group term enables .Distribute.
 	if m.kind == .Distribute {
@@ -226,7 +448,7 @@ alg_operator_token_touches :: proc(
 		}
 	}
 
-	switch m.kind {
+	#partial switch m.kind {
 	case .Combine_Constants, .Combine_Like_Terms:
 		// Only binary + or − between two combinable terms on the same side.
 		if op_text != "+" && op_text != MINUS { return false }
@@ -240,10 +462,39 @@ alg_operator_token_touches :: proc(
 		// Only explicit multiplication (×) can trigger distribution—never + or −.
 		if op_text != "×" { return false }
 		return prev_term != NO_EXPR && prev_term == next_term && m.target == prev_term
+	case .Commute: return alg_token_commute_target(eq, tokens, tok_idx) == m.target
 	case .Add_To_Both, .Subtract_From_Both, .Divide_Both, .Multiply_Both, .Apply_Function:
 		return false
 	}
 	return false
+}
+
+@(private = "package")
+alg_append_contextual_balance :: proc(eq: ^Equation, term: Expr_Id, moves: ^Move_List) {
+	if term == NO_EXPR { return }
+	for side in Side {
+		info := alg_analyze(eq, side)
+		for t in info.items[:info.count] {
+			if t.node != term { continue }
+			if t.kind == .Group {
+				candidate := Move{.Distribute, side, t.node, {t.value, false}}
+				already_listed := false
+				for existing in moves.items[:moves.count] {
+					if existing == candidate { already_listed = true; break }
+				}
+				if !already_listed { alg_push_move(moves, candidate) }
+				continue
+			}
+			if t.kind != .Var && t.kind != .Const { continue }
+			kind := t.value < 0 ? Move_Kind.Add_To_Both : Move_Kind.Subtract_From_Both
+			candidate := Move{kind, side, t.node, {abs(t.value), t.kind == .Var}}
+			already_listed := false
+			for existing in moves.items[:moves.count] {
+				if existing == candidate { already_listed = true; break }
+			}
+			if !already_listed { alg_push_move(moves, candidate) }
+		}
+	}
 }
 
 valid_moves_by_expr :: proc(eq: Equation, selected: Maybe(Expr_Id) = nil) -> (out: Move_List) {
@@ -261,11 +512,39 @@ valid_moves_by_token :: proc(eq: Equation, tok_idx: int) -> (out: Move_List) {
 	eq := eq
 	tokens := tokenize(eq)
 	if tok_idx < 0 || tok_idx >= tokens.count { return }
+	if label_str(&tokens.items[tok_idx].text) == "=" { return }
 
 	all := alg_all_moves(&eq)
 	for m in all.items[:all.count] {
 		if alg_token_touches_move(&eq, &tokens, tok_idx, m) {
 			alg_push_move(&out, m)
+		}
+	}
+
+	// A token can also anchor a direct balance move, even when the global
+	// recommender currently prefers simplifying another part of the equation.
+	tok := tokens.items[tok_idx]
+	if tok.kind != .Operator && tok.term != NO_EXPR {
+		alg_append_contextual_balance(&eq, tok.term, &out)
+	}
+	if tok.kind == .Operator && out.count == 0 {
+		directions := [2]int{-1, 1}
+		for direction in directions {
+			adjacent := tok_idx + direction
+			for adjacent >= 0 &&
+			    adjacent < tokens.count &&
+			    tokens.items[adjacent].side == tok.side {
+				if tokens.items[adjacent].term != NO_EXPR {
+					alg_append_contextual_balance(&eq, tokens.items[adjacent].term, &out)
+					break
+				}
+				adjacent += direction
+			}
+		}
+	}
+	if tok.kind == .Operator {
+		if target := alg_token_commute_target(&eq, &tokens, tok_idx); target != NO_EXPR {
+			alg_push_move(&out, Move{.Commute, tok.side, target, {}})
 		}
 	}
 	return
