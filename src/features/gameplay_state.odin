@@ -230,12 +230,12 @@ Gameplay_Magnet_Animation :: struct {
 }
 
 Gameplay_Swap_Animation :: struct {
-	source_tokens: Token_List,
-	result_tokens: Token_List,
-	swap_start:    int, // first token of the swapped region
-	swap_a_len:    int, // tokens in term A (left of the operator)
-	swap_b_len:    int, // tokens in term B (right of the operator)
-	swap_signed:   bool, // term A has a leading sign that moves with it
+	source_tokens:     Token_List,
+	result_tokens:     Token_List,
+	swap_start:        int, // first token of the swapped region
+	swap_a_len:        int, // tokens in term A (left of the operator)
+	swap_b_len:        int, // tokens in term B (right of the operator)
+	swap_signed:       bool, // term A has a leading sign that moves with it
 	swap_signed_terms: bool, // both adjacent terms carry their signs while swapping
 }
 
@@ -654,7 +654,10 @@ gameplay_prepare_signed_swap_animation :: proc(
 				}
 				if !matches { continue }
 				for i in 0 ..< a_len {
-					if !gp_token_same(source.items[start + i], result.items[start + b_len + 2 + i]) {
+					if !gp_token_same(
+						source.items[start + i],
+						result.items[start + b_len + 2 + i],
+					) {
 						matches = false
 						break
 					}
@@ -690,7 +693,8 @@ gameplay_prepare_unsigned_swap_animation :: proc(
 		   label_str(&source.items[start].text) != "−" { continue }
 		for b_len in 1 ..< source.count - start - 1 {
 			plus := start + b_len + 1
-			if plus >= source.count || source.items[plus].kind != .Operator ||
+			if plus >= source.count ||
+			   source.items[plus].kind != .Operator ||
 			   label_str(&source.items[plus].text) != "+" { continue }
 			for a_len in 1 ..< source.count - plus - 1 {
 				source_end := plus + a_len + 1
@@ -714,7 +718,10 @@ gameplay_prepare_unsigned_swap_animation :: proc(
 				}
 				if !matches { continue }
 				for i in 0 ..< b_len {
-					if !gp_token_same(source.items[start + 1 + i], result.items[start + a_len + 1 + i]) {
+					if !gp_token_same(
+						source.items[start + 1 + i],
+						result.items[start + a_len + 1 + i],
+					) {
 						matches = false
 						break
 					}
@@ -760,7 +767,8 @@ gameplay_prepare_signed_terms_swap_animation :: proc(
 		for separator in start + 2 ..< source.count {
 			separator_token := source.items[separator]
 			separator_text := label_str(&separator_token.text)
-			if separator_token.kind != .Operator || (separator_text != "+" && separator_text != "−") {
+			if separator_token.kind != .Operator ||
+			   (separator_text != "+" && separator_text != "−") {
 				continue
 			}
 			if source.items[separator - 1].term != first_term || separator + 1 >= source.count {
@@ -814,7 +822,10 @@ gameplay_prepare_signed_terms_swap_animation :: proc(
 			}
 			if !matches { continue }
 			for i in 0 ..< first_len - 1 {
-				if !gp_token_same(source.items[start + 1 + i], result.items[result_first_start + i]) {
+				if !gp_token_same(
+					source.items[start + 1 + i],
+					result.items[result_first_start + i],
+				) {
 					matches = false
 					break
 				}

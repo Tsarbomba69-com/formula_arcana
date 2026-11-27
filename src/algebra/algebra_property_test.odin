@@ -133,6 +133,48 @@ eval_balance :: proc(eq: ^Equation, x_val: i64) -> (diff: i64, ok: bool) {
 
 sample_points :: [5]i64{-3, -1, 0, 2, 7}
 
+// ---- Helpers for Step-Atomicity & Non-Leaping Invariant --------------------
+
+is_already_isolated_var :: proc(eq: ^Equation) -> bool {
+	left_info := alg_analyze(eq, .Left)
+	right_info := alg_analyze(eq, .Right)
+	if !left_info.ok || !right_info.ok { return false }
+	if left_info.count != 1 || right_info.count != 1 { return false }
+	lt := left_info.items[0]
+	rt := right_info.items[0]
+	return lt.kind == .Var && lt.value == 1 && rt.kind == .Const
+}
+
+count_non_zero_terms :: proc(eq: ^Equation, side: Side) -> int {
+	info := alg_analyze(eq, side)
+	count := 0
+	for t in info.items[:info.count] {
+		if t.value != 0 { count += 1 }
+	}
+	return count
+}
+
+build_linear_eq_3_terms :: proc(
+	a_lhs, c_lhs, b_rhs, c_rhs: i64,
+	var_name: u8 = 'x',
+) -> (
+	eq: Equation,
+	ok: bool,
+) {
+	// Builds (a_lhs * x + c_lhs) = (b_rhs * x + c_rhs)
+	vx_l := eq_push_node(&eq, Var{name = var_name})
+	ax_l := eq_add_bin(&eq, .Mul, eq_push_node(&eq, Num{value = a_lhs}), vx_l)
+	lhs := eq_add_bin(&eq, .Add, ax_l, eq_push_node(&eq, Num{value = c_lhs}))
+
+	vx_r := eq_push_node(&eq, Var{name = var_name})
+	bx_r := eq_add_bin(&eq, .Mul, eq_push_node(&eq, Num{value = b_rhs}), vx_r)
+	rhs := eq_add_bin(&eq, .Add, bx_r, eq_push_node(&eq, Num{value = c_rhs}))
+
+	eq.lhs = lhs
+	eq.rhs = rhs
+	return eq, !eq.overflow
+}
+
 // ---- BDD Scenario 1: Commutativity / Move Selection & Equivalence ---------------
 // Feature: Valid move discovery and move application consistency
 //   Scenario: Filtered moves are always a subset of offered moves, and applying
@@ -482,6 +524,145 @@ prop_commute_operator_swaps_terms_and_preserves_equality :: proc(t: ^testing.T) 
 						}
 						break
 					}
+				}
+			}
+		}
+	}
+}
+
+// ---- TDD: Concrete Regression for "Add to Both Sides" Leaping to Solution ----
+// Regression for equation with multiple terms (e.g. -2x - 4 + 3x = 17):
+// applying Add_To_Both (+4) must only add 4 to both sides and preserve
+// algebraic balance, NOT jump straight to x = 21.
+
+@(test)
+add_to_both_does_not_leap_to_final_solution :: proc(t: ^testing.T) {
+	// Construct: (-2*x - 4) + 3*x = 17
+	eq: Equation
+	x1 := eq_push_node(&eq, Var{name = 'x'})
+	t1 := eq_add_bin(&eq, .Mul, eq_push_node(&eq, Num{value = -2}), x1)
+	c1 := eq_push_node(&eq, Num{value = 4})
+	t1_minus_c1 := eq_add_bin(&eq, .Sub, t1, c1)
+
+	x2 := eq_push_node(&eq, Var{name = 'x'})
+	t2 := eq_add_bin(&eq, .Mul, eq_push_node(&eq, Num{value = 3}), x2)
+	lhs := eq_add_bin(&eq, .Add, t1_minus_c1, t2)
+	rhs := eq_push_node(&eq, Num{value = 17})
+
+	eq.lhs = lhs
+	eq.rhs = rhs
+	testing.expect(t, !eq.overflow, "failed to construct -2x - 4 + 3x = 17")
+
+	add_four := Move {
+		kind = .Add_To_Both,
+		side = .Left,
+		target = c1,
+		operand = Term{coef = 4, has_var = false},
+	}
+
+	next_eq, ok := apply_move(eq, add_four)
+	testing.expect(t, ok, "expected Add_To_Both (+4) to be applicable")
+	testing.expect(t, !next_eq.overflow, "result overflowed")
+
+	// Must not leap directly to x = 21 from a multi-term unsimplified equation.
+	testing.expect(
+		t,
+		!is_already_isolated_var(&next_eq),
+		"Add_To_Both leaped directly to isolated solution x = k instead of a single step",
+	)
+
+	// Balance lhs(x) - rhs(x) must remain invariant across sample points.
+	for x in sample_points {
+		before_diff, bok := eval_balance(&eq, x)
+		after_diff, aok := eval_balance(&next_eq, x)
+		testing.expect(t, bok && aok, "expected evaluable balance before and after move")
+		testing.expect_value(t, after_diff, before_diff)
+	}
+}
+
+// ---- BDD Scenario: Single-Step Balance Move Invariant ------------------------
+// Feature: Balance moves as single algebraic steps
+//   Given a non-isolated equation with more than one term on at least one side
+//   When an Add_To_Both or Subtract_From_Both move is applied
+//   Then the resulting equation preserves lhs(x) - rhs(x) for all test x
+//   And does not jump directly to an isolated 1*x = const form.
+
+@(test)
+balance_move_is_single_step_not_final_jump :: proc(t: ^testing.T) {
+	eq, built := build_linear_eq_3_terms(2, -5, 1, 7, 'x')
+	testing.expect(t, built, "failed building 2x - 5 = x + 7")
+
+	all := alg_all_moves(&eq)
+	balance_count := 0
+	for m in all.items[:all.count] {
+		if m.kind != .Add_To_Both && m.kind != .Subtract_From_Both {
+			continue
+		}
+		balance_count += 1
+
+		next_eq, ok := apply_move(eq, m)
+		testing.expect(t, ok, fmt.tprintf("balance move %v should apply", m.kind))
+		if !ok { continue }
+
+		testing.expect(
+			t,
+			!is_already_isolated_var(&next_eq),
+			fmt.tprintf("move %v leaped straight to isolated solution", m.kind),
+		)
+
+		for x in sample_points {
+			b, bok := eval_balance(&eq, x)
+			a, aok := eval_balance(&next_eq, x)
+			if bok && aok {
+				testing.expect_value(t, a, b)
+			}
+		}
+	}
+	testing.expect(t, balance_count > 0, "expected at least one balance move on 2x - 5 = x + 7")
+}
+
+// ---- Property-Based Test: Balance Moves Never Leap Over Intermediate Steps --
+// Invariant: Whenever an equation is not already in isolated `x = c` form and
+// has more than a single non-zero term on both sides (or multiple variable/const
+// pieces), applying Add_To_Both or Subtract_From_Both must preserve balance and
+// must NOT produce an already-isolated `1*x = const` equation in one move.
+
+@(test)
+prop_balance_moves_never_leap_to_solution :: proc(t: ^testing.T) {
+	for seed in u64(5001) ..= (5000 + PROPERTY_TRIALS) {
+		rng := rng_init(seed)
+		eq := gen_random_equation(&rng, 'x')
+		if eq.overflow { continue }
+		if is_already_isolated_var(&eq) { continue }
+
+		total_terms := count_non_zero_terms(&eq, .Left) + count_non_zero_terms(&eq, .Right)
+		if total_terms <= 2 { continue }
+
+		all := alg_all_moves(&eq)
+		for m in all.items[:all.count] {
+			if m.kind != .Add_To_Both && m.kind != .Subtract_From_Both {
+				continue
+			}
+
+			next_eq, ok := apply_move(eq, m)
+			if !ok || next_eq.overflow { continue }
+
+			testing.expect(
+				t,
+				!is_already_isolated_var(&next_eq),
+				fmt.tprintf(
+					"seed=%d move=%v: leaped straight to isolated solution from %d terms",
+					seed,
+					m.kind,
+					total_terms,
+				),
+			)
+
+			for x in sample_points {
+				b, bok := eval_balance(&eq, x)
+				a, aok := eval_balance(&next_eq, x)
+				if bok && aok {
+					testing.expect_value(t, a, b)
 				}
 			}
 		}

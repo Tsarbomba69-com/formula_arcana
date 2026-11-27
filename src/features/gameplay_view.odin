@@ -579,14 +579,39 @@ gp_draw_swap_animation :: proc(
 		for k in 0 ..< payload.swap_b_len {
 			from := gp_formula_tile_rect(box, count, a_lo + payload.swap_a_len + k)
 			to := gp_formula_tile_rect(box, count, a_lo + k)
-			gp_draw_swap_token(v, payload.source_tokens.items[a_lo + payload.swap_a_len + k], from, to, theta, cap, font)
+			gp_draw_swap_token(
+				v,
+				payload.source_tokens.items[a_lo + payload.swap_a_len + k],
+				from,
+				to,
+				theta,
+				cap,
+				font,
+			)
 		}
 		for k in 0 ..< payload.swap_a_len {
 			from := gp_formula_tile_rect(box, count, a_lo + k)
 			to := gp_formula_tile_rect(box, count, a_lo + payload.swap_b_len + k)
-			gp_draw_swap_token(v, payload.source_tokens.items[a_lo + k], from, to, theta, cap, font)
+			gp_draw_swap_token(
+				v,
+				payload.source_tokens.items[a_lo + k],
+				from,
+				to,
+				theta,
+				cap,
+				font,
+			)
 		}
-		gp_text(v, "SWAPPING TERMS", box.x + box.w / 2, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
+		gp_text(
+			v,
+			"SWAPPING TERMS",
+			box.x + box.w / 2,
+			box.y + 14,
+			9,
+			GP_TEAL,
+			s.fonts.mono,
+			.Center,
+		)
 		return
 	}
 	if payload.swap_signed {
@@ -680,7 +705,16 @@ gp_draw_swap_animation :: proc(
 			u8(math.round(255 * (1 - eased))),
 			true,
 		)
-		gp_text(v, "SWAPPING TERMS", box.x + box.w / 2, box.y + 14, 9, GP_TEAL, s.fonts.mono, .Center)
+		gp_text(
+			v,
+			"SWAPPING TERMS",
+			box.x + box.w / 2,
+			box.y + 14,
+			9,
+			GP_TEAL,
+			s.fonts.mono,
+			.Center,
+		)
 		return
 	}
 
@@ -742,7 +776,7 @@ gp_draw_reflow_token :: proc(
 	from, to: shared.Rect,
 	from_font, to_font, progress: f32,
 ) {
-	r := shared.Rect{
+	r := shared.Rect {
 		x = from.x + (to.x - from.x) * progress,
 		y = from.y + (to.y - from.y) * progress,
 		w = from.w + (to.w - from.w) * progress,

@@ -242,6 +242,36 @@ alg_perform :: proc(eq: ^Equation, m: Move) -> (out: Equation, ok: bool) {
 		left = alg_normalize(left.items[:left.count], name)
 		right = alg_normalize(right.items[:right.count], name)
 
+		// A balance move can simplify the equation, but it must not also
+		// finish the solve in the same step (for example, a multi-term side
+		// collapsing directly to x = k). In that case retain the requested
+		// operation explicitly so the player can see and take one step.
+		finishes_solve :=
+			left.count == 1 &&
+			right.count == 1 &&
+			left.items[0].kind == .Var &&
+			left.items[0].value == 1 &&
+			right.items[0].kind == .Const
+		original_target := m.side == .Left ? alg_side_specs(eq, .Left) : alg_side_specs(eq, .Right)
+		if finishes_solve && original_target.count > 2 {
+			out = eq^
+			out.lhs = alg_copy(&out, eq, eq.lhs)
+			out.rhs = alg_copy(&out, eq, eq.rhs)
+			op: Binary_Op = m.kind == .Add_To_Both ? .Add : .Sub
+			term: Expr_Id
+			if m.operand.has_var {
+				v := alg_new(&out, Var{name})
+				coef := alg_new(&out, Num{m.operand.coef})
+				term = alg_new(&out, Bin{.Mul, coef, v})
+			} else {
+				term = alg_new(&out, Num{m.operand.coef})
+			}
+			if term == NO_EXPR { return eq^, false }
+			out.lhs = alg_new(&out, Bin{op, out.lhs, term})
+			out.rhs = alg_new(&out, Bin{op, out.rhs, term})
+			return out, !out.overflow
+		}
+
 	case .Commute:
 		root := m.side == .Left ? eq.lhs : eq.rhs
 		chain_root := alg_commute_chain_root(eq, root, m.target)
